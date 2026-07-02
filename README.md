@@ -4,7 +4,7 @@ Personal Codex/Claude skills for YouNavi-flavored workflows.
 
 ## Skills
 
-- `skills/navi-video-explain` - Explain a video from a URL or local file by transcribing it, selecting key frames, and producing a personalized Markdown image-and-text walkthrough.
+- `skills/navi-video-explain` - Explain a video from a URL or local file by transcribing it, selecting key frames, and producing a personalized Markdown image-and-text walkthrough. Current imported version: `0.5`.
 
 ## Install
 
@@ -36,3 +36,7 @@ If `origin` already exists, use:
 ```bash
 git push -u origin main
 ```
+
+## License
+
+MIT.

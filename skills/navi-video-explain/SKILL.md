@@ -27,8 +27,18 @@ FFMPEG=/Applications/YouNavi.app/Contents/Resources/bin/ffmpeg
 
 - 本地路径存在：直接使用。
 - URL：先按页面和链接形态获取本地媒体文件；普通下载不可行且确实是平台视频时，再考虑 `yt-dlp`。
-- 缺少 `yt-dlp`：说明原因，让用户确认安装或改为提供本地文件。
-- 隐私：默认不读取浏览器 cookie / 钥匙串 / 登录态；确需登录态时先征得当次明确同意。使用 `yt-dlp` 时带 `--ignore-config`。
+- 缺少 `yt-dlp`：如果本机有 `you-get`，可先用 `you-get`；否则说明原因，让用户确认安装或改为提供本地文件。
+- 隐私：不要使用 `--cookies-from-browser`，也不要触发浏览器 cookie / 钥匙串 / 登录态读取。使用 `yt-dlp` 时带 `--ignore-config`。
+
+B 站下载失败时：
+- `yt-dlp` 返回 HTTP 412 不等于“需要浏览器登录态”。先尝试 `you-get`（如果本机可用）。
+- 不要把升级/重装下载器当作默认排障步骤；除非用户明确要求，不执行 `yt-dlp -U`、`pip install -U yt-dlp`、`brew upgrade yt-dlp`。
+- 若 `yt-dlp` / `you-get` 都失败，停止并报告错误；不要继续尝试浏览器 cookie、登录态、钥匙串或下载器升级。
+
+```bash
+yt-dlp --ignore-config -f "bv*[ext=mp4]+ba/b" --merge-output-format mp4 -o "<workdir>/video.%(ext)s" "<url>"
+you-get -o "<workdir>/" "<url>"
+```
 
 ### 2. 直接转写视频文件
 
