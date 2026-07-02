@@ -1,6 +1,6 @@
 # CHA499-younavi-skill
 
-Personal Codex/Claude skills extracted from the CHA499 / YouNavi working system.
+Personal Codex/Claude skills for YouNavi-flavored workflows.
 
 ## Skills
 
@@ -22,6 +22,17 @@ For Codex:
 cp -R skills/navi-video-explain ~/.codex/skills/
 ```
 
-## Source
+## Publish
 
-Initial import: `/Users/zqnw/.claude/skills/navi-video-explain0.4`.
+Create the GitHub repository as public:
+
+```bash
+gh auth login
+gh repo create CHA499-younavi-skill --public --source=. --remote=origin --push
+```
+
+If `origin` already exists, use:
+
+```bash
+git push -u origin main
+```

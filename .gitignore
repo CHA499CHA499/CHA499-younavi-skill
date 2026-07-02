@@ -4,3 +4,16 @@ dist/
 build/
 *.log
 *.tmp
+
+# Local environment and credentials
+.env
+.env.*
+*.secret
+*.pem
+*.key
+id_rsa*
+id_ed25519*
+
+# Agent-local settings
+.claude/settings.local.json
+.codex/settings.local.json
