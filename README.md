@@ -5,10 +5,15 @@ Personal Codex/Claude skills for YouNavi-flavored workflows.
 ## Skills
 
 - `skills/navi-video-explain` - Explain a video from a URL or local file by transcribing it, selecting key frames, and producing a personalized Markdown image-and-text walkthrough. Current imported version: `0.5`.
+- `skills/cinder-memory` - Provide file-based long-term memory and evening-report consolidation for YouNavi without modifying YouNavi source code. Current imported version: `0.2.0`.
 
 ## Install
 
 Copy or symlink an individual skill directory into the target agent's skills directory.
+
+For Cinder Memory, use YouNavi's skill panel to import the `skills/cinder-memory` folder directly.
+
+For Navi Video Explain, install it manually as follows.
 
 For Claude:
 

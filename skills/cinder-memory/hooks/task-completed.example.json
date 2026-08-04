@@ -1,0 +1,18 @@
+{
+  "hooks": {
+    "task.completed": [
+      {
+        "hooks": [
+          {
+            "type": "script",
+            "runtime": "python",
+            "script_path": "<skill-dir>/hooks/auto_capture.py",
+            "timeout_ms": 60000,
+            "min_duration_ms": 1000,
+            "async_mode": true
+          }
+        ]
+      }
+    ]
+  }
+}
