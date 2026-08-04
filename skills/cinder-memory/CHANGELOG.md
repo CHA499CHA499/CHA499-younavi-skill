@@ -1,4 +1,35 @@
+---
+title: CHANGELOG
+type: note
+permalink: cinder/cortex/memory-system/code/cinder-memory/changelog
+---
+
 # Cinder Memory YouNavi Plugin · CHANGELOG
+
+## 2026-08-05 v0.3.1
+
+- 主启动口令收敛为 `/cinder-memory 启动`。
+- 兼容 `开始`、`开启`、`开始记忆`、`开启记忆`、`启动记忆` 与 `启动自动记忆`；所有入口共享同一
+  幂等 hook 安装流程。
+- 扩大 Skill 触发描述，覆盖自动记忆、长期记忆、个人知识库、保存偏好、历史回忆、人物/项目背景、
+  整理、审查与遗忘等自然语言表达。
+- 保留授权边界：询问功能、状态或用法不自动启用 hook；数据目录和 v0.3 schema 均不改变。
+
+## 2026-08-04 v0.3.0
+
+- 数据流升级为 `incoming → extraction JSON → digests/memory/inbox`：完整晚报、每日 conversation
+  快照与 manifest 保留为原始证据，长期记忆改为带 frontmatter 的原子 Markdown。
+- 晚报触发一个 `source=cinder_memory_extract` 无工具任务，最多输入约 8,000 tokens，其中晚报最多约
+  2,000 tokens；模型只生成 schema v1 计划，文件写入与索引重建由本地脚本确定性完成。
+- 新增来源白名单、提取任务登记、计划 hash 幂等、稳定 `canonical_key`、类型、标签、实体、来源日期、
+  状态、置信度和内容 hash。
+- 晚报单源只可生成 digest；自动长期记忆还必须是 high confidence、引用原始 conversation 证据且
+  不含可疑指令。报告单源、低置信和冲突候选进入 inbox，不静默覆盖。
+- 回忆改为 `search → read` 两阶段渐进展开；首步只返回 `memory_summary.md`、`MEMORY.md` 和候选元数据，
+  第二步才读取命中的 1–3 个正文。`expand` 保留兼容。
+- 新数据写入 `memory/<category>/`；v0.1/v0.2 根级分类、`sessions/` 和 `.consolidation/` 只读兼容，
+  升级不删除旧数据。
+- 回归测试增至 37 项，覆盖结构化计划应用、来源拒绝、token 预算、提取递归阻断和两阶段回忆。
 
 ## 2026-08-04 v0.2.0
 

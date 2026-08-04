@@ -78,7 +78,7 @@ class AutoCaptureTests(unittest.TestCase):
         self.assertIn("今天的问题", transcript or "")
         self.assertIn("今天的回答", transcript or "")
 
-    def test_launch_consolidation_uses_one_shot_cinder_source(self) -> None:
+    def test_launch_extraction_uses_single_json_output_task(self) -> None:
         completed = mock.Mock(
             returncode=0,
             stdout=json.dumps(
@@ -93,17 +93,18 @@ class AutoCaptureTests(unittest.TestCase):
             stderr="",
         )
         with mock.patch.object(auto_capture.subprocess, "run", return_value=completed) as run:
-            result = auto_capture.launch_consolidation(
+            result = auto_capture.launch_extraction(
                 "agent-cli",
                 date="2026-08-04",
-                bundle_path="/tmp/user/cognition/cinder-memory/sessions/bundles/2026-08-04.md",
+                evidence="allowed_source_refs: [incoming/2026-08-04/evening-report.md]",
             )
 
         self.assertEqual(result["task_id"], "memory-task")
         command = run.call_args.args[0]
         self.assertEqual(command[:6], ["agent-cli", "--no-auto-start", "-f", "json", "chat", "send"])
-        self.assertEqual(command[command.index("--source") + 1], "cinder_memory")
-        self.assertIn("/cinder-memory 提炼今日记忆 2026-08-04", command[6])
+        self.assertEqual(command[command.index("--source") + 1], "cinder_memory_extract")
+        self.assertIn('"schema_version": 1', command[6])
+        self.assertIn("不要调用任何工具", command[6])
 
     def test_completed_task_overwrites_one_daily_session_snapshot(self) -> None:
         conversation = {
@@ -156,7 +157,7 @@ class AutoCaptureTests(unittest.TestCase):
         self.assertTrue(first["created"])
         self.assertFalse(second["created"])
         self.assertTrue(second["changed"])
-        session_files = list((self.root / "sessions" / "2026-08-04").glob("*.md"))
+        session_files = list((self.root / "incoming" / "2026-08-04").glob("conversation-*.md"))
         self.assertEqual(len(session_files), 1)
         content = session_files[0].read_text(encoding="utf-8")
         self.assertIn("# 项目 讨论", content)
@@ -216,7 +217,7 @@ class AutoCaptureTests(unittest.TestCase):
             auto_capture.memory_fs, "today_local", return_value="2026-08-04"
         ), mock.patch.object(
             auto_capture,
-            "launch_consolidation",
+            "launch_extraction",
             return_value={"task_id": "memory-task", "conversation_id": "memory-conversation"},
         ) as launch:
             first = auto_capture.capture_completed_task(payload, cli_path="agent-cli", root=self.root)
@@ -227,25 +228,108 @@ class AutoCaptureTests(unittest.TestCase):
         launch.assert_called_once()
         bundle = self.root / first["bundle"]
         self.assertIn("今天确认采用 session 日快照。", bundle.read_text(encoding="utf-8"))
-        state_files = list((self.root / ".consolidation").glob("trigger-*.json"))
+        state_files = list((self.root / ".state" / "consolidation").glob("trigger-*.json"))
         self.assertEqual(len(state_files), 1)
         self.assertEqual(json.loads(state_files[0].read_text())["status"], "triggered")
 
-    def test_consolidation_source_does_not_recurse(self) -> None:
+    def test_legacy_consolidation_source_does_not_recurse(self) -> None:
         conversation = {
             "source": "cinder_memory",
             "messages": [{"role": "assistant", "content": "提炼完成"}],
         }
         with mock.patch.object(
             auto_capture, "call_conversation", return_value=conversation
-        ), mock.patch.object(auto_capture, "launch_consolidation") as launch:
+        ), mock.patch.object(auto_capture, "launch_extraction") as launch:
             result = auto_capture.capture_completed_task(
                 {"conversation_id": "memory-conversation", "task_id": "memory-task"},
                 cli_path="agent-cli",
                 root=self.root,
             )
 
-        self.assertEqual(result, {"skipped": "consolidation task"})
+        self.assertEqual(result, {"skipped": "legacy consolidation task"})
+        launch.assert_not_called()
+
+    def test_extraction_source_applies_plan_without_launching_another_task(self) -> None:
+        auto_capture.memory_fs.record_session_snapshot(
+            self.root,
+            date="2026-08-04",
+            conversation_id="source-conversation",
+            task_id="source-task",
+            title="项目讨论",
+            source="app",
+            updated_at="2026-08-04T11:00:00+08:00",
+            transcript="用户明确决定采用 Markdown 记忆。",
+        )
+        bundle = auto_capture.memory_fs.build_extraction_input(
+            self.root,
+            date="2026-08-04",
+            report_title="晚报",
+            report_content="今天确定使用 Markdown。",
+            report_source="conversation:report#task:report",
+        )
+        source_ref = next(
+            item for item in bundle["allowed_source_refs"] if "conversation-" in item
+        )
+        auto_capture.memory_fs.claim_consolidation_trigger(
+            self.root, report_task_id="report-task", date="2026-08-04"
+        )
+        auto_capture.memory_fs.finish_consolidation_trigger(
+            self.root,
+            report_task_id="report-task",
+            date="2026-08-04",
+            task_id="memory-task",
+            conversation_id="memory-conversation",
+        )
+        plan = {
+            "schema_version": 1,
+            "date": "2026-08-04",
+            "digest": {
+                "title": "今日记忆",
+                "summary": "确定使用 Markdown。",
+                "tags": ["记忆"],
+                "source_refs": [source_ref],
+            },
+            "memories": [
+                {
+                    "canonical_key": "project.memory.format",
+                    "memory_type": "project_decision",
+                    "title": "记忆格式",
+                    "summary": "采用 Markdown。",
+                    "content": "项目决定使用 Markdown 文件保存记忆。",
+                    "tags": ["Markdown"],
+                    "entities": ["cinder-memory"],
+                    "source_refs": [source_ref],
+                    "confidence": "high",
+                }
+            ],
+            "candidates": [],
+        }
+        conversation = {
+            "source": "cinder_memory_extract",
+            "messages": [
+                {"role": "user", "content": "提取"},
+                {
+                    "role": "assistant",
+                    "content": json.dumps(plan, ensure_ascii=False),
+                    "task_id": "memory-task",
+                    "is_complete": True,
+                },
+            ],
+        }
+
+        with mock.patch.object(
+            auto_capture, "call_conversation", return_value=conversation
+        ), mock.patch.object(auto_capture, "launch_extraction") as launch:
+            result = auto_capture.capture_completed_task(
+                {"conversation_id": "memory-conversation", "task_id": "memory-task"},
+                cli_path="agent-cli",
+                root=self.root,
+            )
+
+        self.assertTrue(result["applied"])
+        self.assertEqual(result["created"], 1)
+        state_files = list((self.root / ".state" / "consolidation").glob("trigger-*.json"))
+        self.assertEqual(json.loads(state_files[0].read_text())["status"], "applied")
         launch.assert_not_called()
 
     def test_failed_launch_releases_claim_for_retry(self) -> None:
@@ -269,7 +353,7 @@ class AutoCaptureTests(unittest.TestCase):
             auto_capture.memory_fs, "today_local", return_value="2026-08-04"
         ), mock.patch.object(
             auto_capture,
-            "launch_consolidation",
+            "launch_extraction",
             side_effect=[auto_capture.memory_fs.MemoryPluginError("offline"), success],
         ):
             with self.assertRaisesRegex(auto_capture.memory_fs.MemoryPluginError, "offline"):
@@ -292,15 +376,22 @@ class AutoCaptureTests(unittest.TestCase):
         self.assertTrue(hook["async_mode"])
         self.assertEqual(hook["timeout_ms"], 60000)
 
-    def test_skill_start_command_initializes_and_enables_capture(self) -> None:
+    def test_skill_start_command_accepts_broad_activation_phrases(self) -> None:
         skill = (PLUGIN_ROOT / "SKILL.md").read_text(encoding="utf-8")
 
-        self.assertIn("/cinder-memory 开始记忆", skill)
+        self.assertIn("/cinder-memory 启动", skill)
+        self.assertIn("version: 0.3.1", skill)
+        self.assertIn("个人知识库", skill)
+        self.assertIn("帮我记一下", skill)
+        self.assertIn("`开始`、`开启`、`开始记忆`、`开启记忆`", skill)
+        self.assertIn("单纯询问功能、状态或用法不等于授权", skill)
         self.assertIn("不再二次询问", skill)
         self.assertIn("把模板中的 `<skill-dir>` 替换", skill)
         self.assertIn("不得增加第二个相同 hook", skill)
         self.assertIn("目录已初始化，自动捕获未开启", skill)
-        self.assertIn("/cinder-memory 提炼今日记忆", skill)
+        self.assertIn("source=cinder_memory_extract", skill)
+        self.assertIn('"action": "search"', skill)
+        self.assertIn('"action": "read"', skill)
 
 
 if __name__ == "__main__":

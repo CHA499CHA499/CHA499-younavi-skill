@@ -28,17 +28,20 @@ class MemoryFileSystemTests(unittest.TestCase):
     def test_init_creates_file_native_layout_and_index(self) -> None:
         result = memory_fs.status(self.root)
 
-        self.assertEqual(result["version"], "0.2.0")
+        self.assertEqual(result["version"], "0.3.1")
         self.assertEqual(result["data_root"], str(self.root))
         self.assertEqual(result["pending_days"], 0)
         self.assertTrue((self.root / "MEMORY.md").is_file())
+        self.assertTrue((self.root / "memory_summary.md").is_file())
         for directory in (
-            *memory_fs.CATEGORIES,
+            *(pathlib.Path("memory") / category for category in memory_fs.CATEGORIES),
+            "incoming",
+            "digests",
             "inbox",
             "archive",
             ".requests",
-            "sessions",
-            ".consolidation",
+            pathlib.Path(".state") / "consolidation",
+            pathlib.Path(".state") / "applied",
         ):
             self.assertTrue((self.root / directory).is_dir())
 
@@ -92,11 +95,11 @@ class MemoryFileSystemTests(unittest.TestCase):
             source="conversation:style",
         )
 
-        self.assertEqual(result["path"], "preferences/answer-style.md")
+        self.assertEqual(result["path"], "memory/preferences/answer-style.md")
         index = (self.root / "MEMORY.md").read_text(encoding="utf-8")
-        self.assertIn("preferences/answer-style.md", index)
+        self.assertIn("memory/preferences/answer-style.md", index)
         expanded = memory_fs.expand(self.root, query="回答时先给结论")
-        self.assertEqual(expanded["matches"][0]["path"], "preferences/answer-style.md")
+        self.assertEqual(expanded["matches"][0]["path"], "memory/preferences/answer-style.md")
 
     def test_nested_topic_file_is_included_in_its_category(self) -> None:
         memory_fs.ensure_layout(self.root)
@@ -114,12 +117,14 @@ class MemoryFileSystemTests(unittest.TestCase):
 
         self.assertTrue(index.is_file())
         for directory in (
-            *memory_fs.CATEGORIES,
+            *(pathlib.Path("memory") / category for category in memory_fs.CATEGORIES),
+            "incoming",
+            "digests",
             "inbox",
             "archive",
             ".requests",
-            "sessions",
-            ".consolidation",
+            pathlib.Path(".state") / "consolidation",
+            pathlib.Path(".state") / "applied",
         ):
             self.assertTrue((self.root / directory).is_dir())
 
@@ -148,6 +153,7 @@ class MemoryFileSystemTests(unittest.TestCase):
         self.assertTrue(first["created"])
         self.assertFalse(second["created"])
         self.assertEqual(first["path"], second["path"])
+        self.assertTrue(first["path"].startswith("incoming/2026-08-04/conversation-"))
         snapshots = memory_fs.list_session_snapshots(self.root, "2026-08-04")
         self.assertEqual(snapshots["total"], 1)
         content = (self.root / second["path"]).read_text(encoding="utf-8")
@@ -170,9 +176,132 @@ class MemoryFileSystemTests(unittest.TestCase):
 
         self.assertEqual(expanded["matches"], [])
 
-    def test_consolidation_bundle_obeys_character_budget(self) -> None:
-        self.assertEqual(memory_fs.MAX_REPORT_CHARS, 4_000)
-        self.assertEqual(memory_fs.MAX_CONSOLIDATION_CHARS, 16_000)
+    def test_progressive_search_then_read_does_not_return_raw_content_first(self) -> None:
+        remembered = memory_fs.remember(
+            self.root,
+            category="preferences",
+            slug="brief-answer",
+            title="回答长度",
+            content="用户偏好简洁回答。",
+            source="conversation:brief",
+        )
+
+        searched = memory_fs.search_memory(self.root, query="简洁回答")
+        self.assertEqual(searched["matches"][0]["path"], remembered["path"])
+        self.assertNotIn("content", searched["matches"][0])
+        read = memory_fs.read_memory_paths(self.root, paths=[remembered["path"]])
+        self.assertIn("用户偏好简洁回答", read["items"][0]["content"])
+
+    def test_apply_extraction_plan_writes_digest_memory_and_inbox(self) -> None:
+        memory_fs.record_session_snapshot(
+            self.root,
+            date="2026-08-04",
+            conversation_id="conversation-1",
+            task_id="task-1",
+            title="项目讨论",
+            source="app",
+            updated_at="2026-08-04T11:00:00+08:00",
+            transcript="用户明确决定采用文件式记忆。",
+        )
+        bundle = memory_fs.build_extraction_input(
+            self.root,
+            date="2026-08-04",
+            report_title="晚报",
+            report_content="今天确定采用文件式记忆。",
+            report_source="conversation:report#task:report",
+        )
+        source_ref = next(
+            item for item in bundle["allowed_source_refs"] if "conversation-" in item
+        )
+        plan = {
+            "schema_version": 1,
+            "date": "2026-08-04",
+            "digest": {
+                "title": "今日记忆",
+                "summary": "确定采用文件式记忆。",
+                "tags": ["记忆"],
+                "source_refs": [source_ref],
+            },
+            "memories": [
+                {
+                    "canonical_key": "project.memory.storage",
+                    "memory_type": "project_decision",
+                    "title": "记忆存储方案",
+                    "summary": "采用文件式记忆。",
+                    "content": "项目已经决定使用用户目录下的 Markdown 文件。",
+                    "tags": ["记忆", "Markdown"],
+                    "entities": ["cinder-memory"],
+                    "source_refs": [source_ref],
+                    "confidence": "high",
+                },
+                {
+                    "canonical_key": "project.memory.future",
+                    "memory_type": "project_decision",
+                    "title": "可能的后续方向",
+                    "summary": "可能加入向量检索。",
+                    "content": "该内容尚未确认。",
+                    "tags": ["候选"],
+                    "entities": [],
+                    "source_refs": [source_ref],
+                    "confidence": "medium",
+                },
+            ],
+            "candidates": [],
+        }
+
+        first = memory_fs.apply_extraction_plan(
+            self.root, plan=plan, expected_date="2026-08-04"
+        )
+        second = memory_fs.apply_extraction_plan(
+            self.root, plan=plan, expected_date="2026-08-04"
+        )
+
+        self.assertEqual(first, second)
+        self.assertEqual(first["created"], 1)
+        self.assertEqual(first["inbox"], 1)
+        self.assertTrue((self.root / first["digest"]).is_file())
+        self.assertTrue((self.root / first["written_paths"][0]).is_file())
+        self.assertTrue((self.root / "inbox" / "2026-08-04.md").is_file())
+
+    def test_apply_extraction_plan_rejects_unregistered_sources(self) -> None:
+        memory_fs.record_session_snapshot(
+            self.root,
+            date="2026-08-04",
+            conversation_id="conversation-1",
+            task_id="task-1",
+            title="项目讨论",
+            source="app",
+            updated_at="2026-08-04T11:00:00+08:00",
+            transcript="有来源的内容。",
+        )
+        memory_fs.build_extraction_input(
+            self.root,
+            date="2026-08-04",
+            report_title="晚报",
+            report_content="晚报内容。",
+            report_source="conversation:report#task:report",
+        )
+        plan = {
+            "schema_version": 1,
+            "date": "2026-08-04",
+            "digest": {
+                "title": "错误来源",
+                "summary": "不能接受。",
+                "tags": [],
+                "source_refs": ["incoming/2026-08-04/not-real.md"],
+            },
+            "memories": [],
+            "candidates": [],
+        }
+
+        with self.assertRaisesRegex(memory_fs.MemoryPluginError, "source_refs"):
+            memory_fs.apply_extraction_plan(
+                self.root, plan=plan, expected_date="2026-08-04"
+            )
+
+    def test_extraction_input_obeys_token_budget(self) -> None:
+        self.assertEqual(memory_fs.MAX_REPORT_ESTIMATED_TOKENS, 2_000)
+        self.assertEqual(memory_fs.MAX_EXTRACTION_ESTIMATED_TOKENS, 8_000)
         for index in range(3):
             memory_fs.record_session_snapshot(
                 self.root,
@@ -185,7 +314,7 @@ class MemoryFileSystemTests(unittest.TestCase):
                 transcript=(f"session-{index}-" * 8_000),
             )
 
-        bundle = memory_fs.build_consolidation_bundle(
+        bundle = memory_fs.build_extraction_input(
             self.root,
             date="2026-08-04",
             report_title="晚报",
@@ -194,9 +323,11 @@ class MemoryFileSystemTests(unittest.TestCase):
         )
 
         text = pathlib.Path(bundle["absolute_path"]).read_text(encoding="utf-8")
-        self.assertLessEqual(len(text), memory_fs.MAX_CONSOLIDATION_CHARS)
+        self.assertLessEqual(
+            memory_fs.estimate_tokens(text), memory_fs.MAX_EXTRACTION_ESTIMATED_TOKENS
+        )
         self.assertTrue(bundle["truncated"])
-        self.assertIn("bundle truncated", text)
+        self.assertIn("input truncated", text)
         self.assertEqual(bundle["included_sessions"], 3)
 
     def test_consolidation_trigger_claim_is_idempotent_and_releasable(self) -> None:
@@ -234,7 +365,7 @@ class MemoryFileSystemTests(unittest.TestCase):
 
         result = memory_fs.consume_request(self.root, str(request_file))
 
-        self.assertEqual(result["path"], "profile/role.md")
+        self.assertEqual(result["path"], "memory/profile/role.md")
         self.assertFalse(request_file.exists())
 
     def test_request_outside_requests_directory_is_rejected(self) -> None:
@@ -260,16 +391,16 @@ class MemoryFileSystemTests(unittest.TestCase):
         with self.assertRaisesRegex(memory_fs.MemoryPluginError, "confirmed=true"):
             memory_fs.forget(
                 self.root,
-                relative_path="preferences/old-style.md",
+                relative_path="memory/preferences/old-style.md",
                 confirmed=False,
             )
 
         result = memory_fs.forget(
             self.root,
-            relative_path="preferences/old-style.md",
+            relative_path="memory/preferences/old-style.md",
             confirmed=True,
         )
-        self.assertFalse((self.root / "preferences" / "old-style.md").exists())
+        self.assertFalse((self.root / "memory" / "preferences" / "old-style.md").exists())
         self.assertTrue((self.root / result["archived_to"]).is_file())
 
     def test_forget_rejects_internal_request_files(self) -> None:
@@ -312,7 +443,7 @@ class MemoryFileSystemTests(unittest.TestCase):
         memory_fs.ensure_layout(self.root)
         outside = self.base / "outside.md"
         outside.write_text("# Secret\n\n不应被读取的唯一密语。\n", encoding="utf-8")
-        (self.root / "references" / "leak.md").symlink_to(outside)
+        (self.root / "memory" / "references" / "leak.md").symlink_to(outside)
 
         expanded = memory_fs.expand(self.root, query="唯一密语")
 
@@ -338,18 +469,18 @@ class MemoryFileSystemTests(unittest.TestCase):
             content="must remain",
             source="conversation:protected",
         )
-        (self.root / "projects" / "linked").symlink_to(
-            self.root / "preferences", target_is_directory=True
+        (self.root / "memory" / "projects" / "linked").symlink_to(
+            self.root / "memory" / "preferences", target_is_directory=True
         )
 
         with self.assertRaisesRegex(memory_fs.MemoryPluginError, "symbolic-link"):
             memory_fs.forget(
                 self.root,
-                relative_path="projects/linked/protected.md",
+                relative_path="memory/projects/linked/protected.md",
                 confirmed=True,
             )
 
-        self.assertTrue((self.root / "preferences" / "protected.md").is_file())
+        self.assertTrue((self.root / "memory" / "preferences" / "protected.md").is_file())
 
     @unittest.skipIf(os.name == "nt", "symlink creation commonly requires elevated Windows privileges")
     def test_data_root_rejects_symbolic_linked_cognition_directory(self) -> None:

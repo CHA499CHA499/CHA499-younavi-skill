@@ -1,7 +1,17 @@
+---
+title: ROLLBACK
+type: note
+permalink: cinder/cortex/memory-system/code/cinder-memory/rollback
+---
+
 # Cinder Memory YouNavi Plugin · ROLLBACK
 
-v0.2.0 新增 `sessions/`、`sessions/bundles/` 与 `.consolidation/`，已有长期分类、inbox、archive 和
-`MEMORY.md` 格式不变。回退到 v0.1.2 时旧版本会忽略这些新增目录，无需重写已有记忆。
+v0.3.1 只调整启动口令与 Skill 触发描述，不改变数据布局、hook schema 或自动提取流程。回退到
+v0.3.0 后数据完全兼容，但主启动口令恢复为 `/cinder-memory 开始记忆`。
+
+v0.3.0 新增 `incoming/`、`digests/`、`memory/`、`memory_summary.md` 与 `.state/`。v0.1/v0.2 的根级
+分类、`sessions/`、`.consolidation/`、inbox 和 archive 不删除；v0.3 会继续读取旧分类和 session 证据。
+回退时旧版本会忽略 v0.3 新目录，但不会自动理解 `memory/` 中新增的原子记忆。
 
 ## 停用
 
@@ -40,21 +50,27 @@ python3 "<skill-dir>/scripts/memory_fs.py" reindex
 
 1. 先执行 `/cinder-memory 停止自动捕获`，确认旧 hook 已移除。
 2. 卸载当前 Skill，保留整个 cognition 数据。
-3. 导入 v0.1.2 或其他已知可用的插件目录。
-4. 运行 `/cinder-memory 开始记忆`，让旧版本重新安装自己的 hook 配置。
-5. 运行 `status` 和 `reindex`，再用一条 `expand` 请求确认旧 Markdown 可读。
+3. 备份整个 `cognition/cinder-memory/`，尤其是 `incoming/`、`memory/`、inbox 和 `.state/`。
+4. 导入 v0.2.0 或其他已知可用的插件目录。
+5. 如需让旧版回忆 v0.3 新增记忆，人工审查 `memory/<category>/*.md` 后复制正文到对应旧版根级分类；
+   不要覆盖同名文件，也不要迁移派生索引代替正文。
+6. 运行目标版本文档指定的启动口令，让旧版本重新安装自己的 hook 配置；v0.3.1 使用
+   `/cinder-memory 启动`，v0.3.0 及更早版本使用 `/cinder-memory 开始记忆`。
+7. 运行 `status` 和 `reindex`，再用一条 `expand` 请求确认旧 Markdown 可读。
 
-回退后不会再按 session 覆盖或随晚报自动提炼，而会恢复 v0.1.2 的逐任务 inbox 捕获。
-`sessions/` 和 `.consolidation/` 可留作审查证据；物理清理不属于回退动作。
+回退到 v0.1.2 后不会再按 session 覆盖或随晚报自动提炼，而会恢复逐任务 inbox 捕获。
+回退到 v0.2.0 时会恢复旧 session + 人工提炼任务流程。`incoming/`、`digests/`、`memory/` 和 `.state/`
+可留作审查证据；物理清理不属于回退动作。
 
-## 恢复较宽提炼预算
+## 调整提取预算
 
-如果 16,000 字符预算经真实验收确认遗漏关键信息，可把 `scripts/memory_fs.py` 的
-`MAX_REPORT_CHARS` 恢复为 `12_000`、`MAX_CONSOLIDATION_CHARS` 恢复为 `48_000`，再运行完整测试。
-这只改变下一次提炼包的截断范围，不需要迁移现有 Markdown、session 或幂等状态。
+如果约 8,000 tokens 的输入经真实验收确认遗漏关键信息，可在备份当前插件后调整
+`scripts/memory_fs.py` 的 `MAX_REPORT_ESTIMATED_TOKENS` 和 `MAX_EXTRACTION_ESTIMATED_TOKENS`，再运行
+完整测试。该估算是确定性近似值，不等于模型账单中的精确 token 数；调整只影响下一次
+`extraction-input.md`，不会迁移或删除完整 incoming 证据。
 
-插件 schema 首版只有 Markdown 和 HTML 注释 ID，没有数据库迁移。新版本如果改变文件格式，必须先
-备份整个 `cognition/cinder-memory/`。
+插件没有数据库迁移。回退前不要手工删除 v0.3 目录；新版本如果改变文件格式，必须先备份整个
+`cognition/cinder-memory/`。
 
 ## 完全删除
 

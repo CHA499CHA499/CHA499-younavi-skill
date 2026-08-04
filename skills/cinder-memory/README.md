@@ -1,3 +1,9 @@
+---
+title: README
+type: note
+permalink: cinder/cortex/memory-system/code/cinder-memory/readme
+---
+
 # Cinder Memory · YouNavi 外置插件
 
 面向外部 YouNavi 用户的文件式知识库与记忆插件。它通过 YouNavi 原生“导入技能文件夹”安装，
@@ -20,38 +26,44 @@ YouNavi 会把 `SKILL.md` 和附属脚本复制到：
 随后只需在对话中发送一次：
 
 ```text
-/cinder-memory 开始记忆
+/cinder-memory 启动
 ```
 
 这一步会同时初始化当前用户的 Markdown 目录，并通过 YouNavi 原生 `hook-author` 幂等开启
-`task.completed` 自动捕获。重复执行不会重复添加 hook。
+`task.completed` 自动捕获。`开始`、`开启`、`开始记忆`、`开启记忆`、`启动记忆` 和
+`启动自动记忆` 都是兼容说法；重复执行不会重复添加 hook。单纯询问用法或状态不会自动开启。
 
-### 从 v0.1.2 升级
+### 从旧版升级
 
 YouNavi 导入器会跳过同名 Skill，不能直接重复导入覆盖旧版：
 
 1. 在旧版对话中执行 `/cinder-memory 停止自动捕获`。
 2. 在技能管理中卸载旧 `cinder-memory`；这不会删除 `cognition/cinder-memory/`。
-3. 导入当前 v0.2.0 文件夹。
-4. 执行 `/cinder-memory 开始记忆`。它会安装 60 秒新 hook，已有长期 Markdown 和 inbox 原样保留。
+3. 导入当前 v0.3.1 文件夹。
+4. 执行 `/cinder-memory 启动`。它会安装 60 秒新 hook，已有长期 Markdown 和 inbox 原样保留。
 
 插件会从安装位置识别当前用户，只创建：
 
 ```text
 ~/navi-ai/<username>/cognition/cinder-memory/
 ├── MEMORY.md
-├── profile/
-├── preferences/
-├── people/
-├── projects/
-├── references/
+├── memory_summary.md
+├── memory/
+│   ├── profile/
+│   ├── preferences/
+│   ├── people/
+│   ├── projects/
+│   └── references/
+├── incoming/YYYY-MM-DD/
+│   ├── manifest.json
+│   ├── conversation-*.md
+│   ├── evening-report.md
+│   └── extraction-input.md
+├── digests/
 ├── inbox/
-├── sessions/
-│   ├── YYYY-MM-DD/
-│   └── bundles/
 ├── archive/
 ├── .requests/
-├── .consolidation/
+├── .state/
 └── .write.lock
 ```
 
@@ -60,9 +72,9 @@ YouNavi 导入器会跳过同名 Skill，不能直接重复导入覆盖旧版：
 
 ## 使用
 
-- “记住我喜欢先看结论” → 明确记忆，写入分类 Markdown。
-- “Amy 是谁？” → 先读 `MEMORY.md`，再只展开匹配文件。
-- 每日晚报完成 → 自动提炼当天 session；明确内容分类沉淀，推断和冲突进入 inbox。
+- “记住我喜欢先看结论” → 明确记忆，写入 `memory/preferences/` 原子 Markdown。
+- “Amy 是谁？” → 先搜索 `memory_summary.md` / `MEMORY.md`，再只读取命中的 1–3 个文件。
+- 每日晚报完成 → 自动生成 digest 和结构化提取计划；只有原始会话支持的高置信内容进入 memory。
 - “整理今天的记忆” → 人工审核 inbox，确认后沉淀并归档。
 - “忘掉这个偏好” → 展示目标，确认后移动到 `archive/forgotten/`。
 
@@ -73,18 +85,20 @@ YouNavi 导入器会跳过同名 Skill，不能直接重复导入覆盖旧版：
 
 插件附带 `hooks/auto_capture.py`，订阅 YouNavi 原生 `task.completed`：
 
-- 普通任务完成：通过 `YOUNAVI_AGENT_CLI` 读取会话，把当天 user/assistant 正文覆盖写入一份
-  `sessions/YYYY-MM-DD/session-*.md`。同一 session 当天无论完成多少任务都只有一个文件。
-- `source=evening_report` 的晚报完成：生成最多 16,000 字符的当日提炼包，再 one-shot 创建
-  `/cinder-memory 提炼今日记忆 YYYY-MM-DD` 任务。
-- `source=cinder_memory` 的提炼任务完成：直接跳过，防止 hook 递归。
+- 普通任务完成：通过 `YOUNAVI_AGENT_CLI` 读取会话，把当天 user/assistant 正文覆盖写入
+  `incoming/YYYY-MM-DD/conversation-*.md`。同一 conversation 当天只有一个文件。
+- `source=evening_report` 完成：保留完整晚报，按保守 token 估算构造最多约 8,000 tokens 的
+  `extraction-input.md`，其中晚报最多约 2,000 tokens；随后创建一个
+  `source=cinder_memory_extract` 的普通提取任务。
+- 提取任务被要求不调用工具、只返回 JSON。完成后 hook 校验来源白名单、日期、稳定键、类型、大小、
+  置信度和冲突，并由本地脚本写入 `digests/`、`memory/` 或 `inbox/`，再重建两级索引。
 
-白天的快照写入不调用 LLM；模型只在晚报后集中提炼一次。`sessions/` 不参与普通 `expand`，因此
-回忆时不会把原始会话反复塞进上下文。晚报正文最多取 4,000 字符，整个提炼包最多 16,000 字符，
-剩余预算由当天 sessions 公平共享。
+白天快照、计划校验、去重、冲突判断和索引生成都不调用模型；晚报后只创建一个提取任务。
+`incoming/` 与 `digests/` 不参与普通检索，因此回忆不会重复带入原始会话。一个 YouNavi 任务不等于
+底层实现严格只有一次推理调用，但该任务没有 Skill 工具往返，目标是一次结构化回复完成提取。
 同一个晚报 task 的重复完成事件只会触发一次；创建提炼任务失败会释放幂等标记，允许下次重试。
 
-`/cinder-memory 开始记忆` 会读取 `hooks/task-completed.example.json`，通过 YouNavi `hook-author`
+`/cinder-memory 启动` 会读取 `hooks/task-completed.example.json`，通过 YouNavi `hook-author`
 先读后合并现有 hooks；不会直接覆盖 `option.json`。斜杠激活 Skill 时，YouNavi 会把当前
 `${SKILL_DIR}` 解析为插件目录的绝对路径，再用它替换模板中的 `<skill-dir>`；外部用户不需要填写
 username 或绝对路径。
@@ -101,22 +115,25 @@ username 或绝对路径。
 /cinder-memory 停止自动捕获
 ```
 
-停止只移除本插件 hook，不删除记忆数据。停止后不再更新 session 快照，也不会随晚报自动提炼；
+停止只移除本插件 hook，不删除记忆数据。停止后不再更新 incoming，也不会随晚报自动提取；
 手动“记住”和“回忆”仍可使用。
 
 ## 本地测试
 
 ```bash
 python3 -m unittest discover \
-  -s skills/cinder-memory/tests -v
+  -s brain/cortex/memory-system/code/cinder-memory/tests -v
 ```
 
 ## 边界
 
-- Markdown 文件是唯一真源；`MEMORY.md` 是可重建索引。
+- `incoming` 是证据层，`digests` 是每日机器摘要，`memory` 是长期结果层；不能互相替代。
+- Markdown 文件是唯一真源；`memory_summary.md` 和 `MEMORY.md` 都是可重建索引。
 - 首版为确定性关键词/CJK 检索，不内置 embedding。
 - 冲突是否替换由用户确认，脚本不静默覆盖旧记忆。
-- 晚报提炼只自动沉淀明确、无冲突的信息；推断、冲突和低置信内容进入 inbox。
+- 晚报不能单独成为长期记忆；自动沉淀必须同时引用原始 conversation 证据。
+- 推断、报告单源、疑似指令、冲突和低置信内容进入 inbox 或跳过。
+- v0.2 根级分类、`sessions/` 和 `.consolidation/` 保持只读兼容，不自动删除。
 - 遗忘使用可恢复移动，不物理删除。
 - 插件卸载不删除 `cognition/cinder-memory/` 用户数据。
 
