@@ -7,8 +7,8 @@
             "type": "script",
             "runtime": "python",
             "script_path": "<skill-dir>/hooks/auto_capture.py",
-            "timeout_ms": 60000,
-            "min_duration_ms": 1000,
+            "timeout_ms": 300000,
+            "min_duration_ms": 0,
             "async_mode": true
           }
         ]
