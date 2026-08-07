@@ -11,12 +11,14 @@ import json
 import os
 import pathlib
 import re
+import subprocess
 import tempfile
+import time
 import typing
 import uuid
 
 
-VERSION = "0.4.2"
+VERSION = "0.4.4"
 DATA_RELATIVE_PATH = pathlib.Path("cognition") / "cinder-memory"
 INDEX_NAME = "MEMORY.md"
 SUMMARY_NAME = "memory_summary.md"
@@ -52,6 +54,11 @@ PROMPT_INJECTION_RE = re.compile(
 )
 MAX_REQUEST_BYTES = 1_000_000
 MAX_PLAN_BYTES = 2_000_000
+MAX_CLI_STDOUT_BYTES = 4_000_000
+MAX_CLI_STDERR_BYTES = 64_000
+MAX_DIAGNOSTIC_ERROR_CHARS = 480
+CAPTURE_BACKOFF_THRESHOLD = 3
+CAPTURE_BACKOFF_SECONDS = (300, 1_800, 7_200, 21_600)
 MAX_CONTENT_CHARS = 100_000
 MAX_EVIDENCE_CHARS = 5_000_000
 MAX_EVIDENCE_FILE_CHARS = MAX_EVIDENCE_CHARS + 10_000
@@ -109,6 +116,78 @@ def validated_date(value: typing.Any) -> str:
 
 def emit(payload: typing.Any) -> None:
     print(json.dumps(payload, ensure_ascii=False, sort_keys=True))
+
+
+def diagnostic_error(error: typing.Any, fallback: str = "operation failed") -> str:
+    """Return one bounded, secret-safe diagnostic with a stable correlation ID."""
+    raw = str(error or fallback).strip() or fallback
+    normalized = " ".join(raw.split()) or fallback
+    if re.search(r" \[error_id:[0-9a-f]{16}\]$", normalized):
+        return normalized[:MAX_DIAGNOSTIC_ERROR_CHARS]
+    error_id = hashlib.sha256(raw.encode("utf-8", errors="replace")).hexdigest()[:16]
+    if contains_sensitive_secret(raw):
+        summary = f"{fallback}; sensitive details were suppressed"
+    else:
+        summary = normalized
+    suffix = f" [error_id:{error_id}]"
+    summary = summary[: max(1, MAX_DIAGNOSTIC_ERROR_CHARS - len(suffix))].rstrip()
+    return f"{summary}{suffix}"
+
+
+def diagnostic_error_id(error: typing.Any) -> str:
+    """Return the correlation ID already rendered in a diagnostic, or derive one."""
+    raw = str(error or "operation failed").strip() or "operation failed"
+    match = re.search(r" \[error_id:([0-9a-f]{16})\]$", raw)
+    if match:
+        return match.group(1)
+    return hashlib.sha256(raw.encode("utf-8", errors="replace")).hexdigest()[:16]
+
+
+def run_bounded_subprocess(
+    args: list[str],
+    *,
+    timeout: float,
+    maximum_stdout_bytes: int = MAX_CLI_STDOUT_BYTES,
+    maximum_stderr_bytes: int = MAX_CLI_STDERR_BYTES,
+) -> subprocess.CompletedProcess[str]:
+    """Run a CLI without allowing captured stdout/stderr to grow without bound."""
+    with tempfile.TemporaryFile() as stdout_file, tempfile.TemporaryFile() as stderr_file:
+        process = subprocess.Popen(args, stdout=stdout_file, stderr=stderr_file)
+        deadline = time.monotonic() + timeout
+        exceeded_stream: str | None = None
+        while process.poll() is None:
+            stdout_size = os.fstat(stdout_file.fileno()).st_size
+            stderr_size = os.fstat(stderr_file.fileno()).st_size
+            if stdout_size > maximum_stdout_bytes:
+                exceeded_stream = "stdout"
+                break
+            if stderr_size > maximum_stderr_bytes:
+                exceeded_stream = "stderr"
+                break
+            if time.monotonic() >= deadline:
+                process.kill()
+                process.wait()
+                raise subprocess.TimeoutExpired(args, timeout)
+            time.sleep(0.02)
+        if exceeded_stream is not None:
+            process.kill()
+            process.wait()
+            limit = maximum_stdout_bytes if exceeded_stream == "stdout" else maximum_stderr_bytes
+            raise MemoryPluginError(
+                f"agent-cli {exceeded_stream} exceeded the {limit}-byte safety limit"
+            )
+        return_code = process.wait()
+        stdout_size = os.fstat(stdout_file.fileno()).st_size
+        stderr_size = os.fstat(stderr_file.fileno()).st_size
+        if stdout_size > maximum_stdout_bytes or stderr_size > maximum_stderr_bytes:
+            stream = "stdout" if stdout_size > maximum_stdout_bytes else "stderr"
+            limit = maximum_stdout_bytes if stream == "stdout" else maximum_stderr_bytes
+            raise MemoryPluginError(f"agent-cli {stream} exceeded the {limit}-byte safety limit")
+        stdout_file.seek(0)
+        stderr_file.seek(0)
+        stdout = stdout_file.read().decode("utf-8", errors="replace")
+        stderr = stderr_file.read().decode("utf-8", errors="replace")
+    return subprocess.CompletedProcess(args, return_code, stdout=stdout, stderr=stderr)
 
 
 def required_text(name: str, value: typing.Any, maximum: int = MAX_CONTENT_CHARS) -> str:
@@ -1155,9 +1234,7 @@ def finish_consolidation_trigger(
         if previous_conversation_ids:
             payload["conversation_ids"] = previous_conversation_ids
         if previous_error:
-            payload["previous_error"] = single_line(
-                "previous_error", previous_error.replace("\n", " "), 500
-            )
+            payload["previous_error"] = diagnostic_error(previous_error, "extraction failed")
         atomic_write(
             path,
             json.dumps(payload, ensure_ascii=False, sort_keys=True) + "\n",
@@ -1267,9 +1344,7 @@ def prepare_consolidation_retry(
         payload["conversation_ids"] = previous_ids
         payload["status"] = "launching"
         payload["retry_count"] = retry_count + 1
-        payload["previous_error"] = single_line(
-            "previous_error", error.replace("\n", " "), 500
-        )
+        payload["previous_error"] = diagnostic_error(error, "extraction failed")
         payload["claimed_at"] = now_utc()
         payload.pop("completion_claimed_at", None)
         atomic_write(
@@ -1332,7 +1407,7 @@ def update_consolidation_result(
         if result is not None:
             payload["result"] = result
         if error:
-            payload["error"] = single_line("error", error.replace("\n", " "), 500)
+            payload["error"] = diagnostic_error(error, "extraction failed")
         validate_write_target(root, path)
         atomic_write(path, json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
     return True
@@ -1364,7 +1439,7 @@ def fail_consolidation_trigger(
         payload["status"] = "failed"
         payload["completed_at"] = now_utc()
         payload["retry_count"] = 0
-        payload["error"] = single_line("error", error.replace("\n", " "), 500)
+        payload["error"] = diagnostic_error(error, "extraction failed")
         atomic_write(path, json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
 
 
@@ -2469,15 +2544,18 @@ def record_capture_health(
             if not isinstance(existing, dict):
                 raise MemoryPluginError("capture health state schema is invalid")
             state.update(existing)
+        recorded_at = now_utc()
         state["last_event_id"] = single_line("event_id", str(event_id or "unknown"), 200)
         if success:
             state["last_event_status"] = "success"
             state["consecutive_failures"] = 0
-            state["last_success_at"] = now_utc()
+            state["last_success_at"] = recorded_at
+            state.pop("backoff_until", None)
+            state.pop("backoff_seconds", None)
         else:
-            error_text = str(error or "capture failed").strip() or "capture failed"
-            if contains_sensitive_secret(error_text):
-                error_text = "capture failed; sensitive error details were suppressed"
+            raw_error = str(error or "capture failed").strip() or "capture failed"
+            error_text = diagnostic_error(raw_error, "capture failed")
+            error_id = diagnostic_error_id(raw_error)
             failures_total = state.get("failures_total")
             if isinstance(failures_total, bool) or not isinstance(failures_total, int):
                 failures_total = 0
@@ -2487,12 +2565,41 @@ def record_capture_health(
                 consecutive_failures = 0
             state["last_event_status"] = "failed"
             state["consecutive_failures"] = consecutive_failures + 1
+            previous_failure = state.get("last_failure")
+            same_error = (
+                isinstance(previous_failure, dict)
+                and previous_failure.get("error_id") == error_id
+            )
+            occurrences = 1
+            first_seen_at = recorded_at
+            if same_error:
+                previous_occurrences = previous_failure.get("occurrences")
+                if isinstance(previous_occurrences, int) and not isinstance(
+                    previous_occurrences, bool
+                ):
+                    occurrences = max(previous_occurrences, 0) + 1
+                first_seen_at = str(previous_failure.get("first_seen_at") or recorded_at)
+            failure_count = state["consecutive_failures"]
+            if failure_count >= CAPTURE_BACKOFF_THRESHOLD:
+                backoff_index = min(
+                    failure_count - CAPTURE_BACKOFF_THRESHOLD,
+                    len(CAPTURE_BACKOFF_SECONDS) - 1,
+                )
+                backoff_seconds = CAPTURE_BACKOFF_SECONDS[backoff_index]
+                backoff_until = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(
+                    seconds=backoff_seconds
+                )
+                state["backoff_seconds"] = backoff_seconds
+                state["backoff_until"] = backoff_until.isoformat(timespec="seconds")
             state["last_failure"] = {
-                "at": now_utc(),
+                "at": recorded_at,
+                "first_seen_at": first_seen_at,
                 "event_id": state["last_event_id"],
                 "conversation_id": str(conversation_id or "")[:200],
                 "task_id": str(task_id or "")[:200],
-                "error": error_text[:1_000],
+                "error_id": error_id,
+                "occurrences": occurrences,
+                "error": error_text,
             }
         validate_write_target(root, path)
         atomic_write(
@@ -2500,6 +2607,43 @@ def record_capture_health(
             json.dumps(state, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
         )
     return state
+
+
+def capture_gate(
+    root: pathlib.Path,
+    *,
+    current_time: datetime.datetime | None = None,
+) -> dict[str, typing.Any]:
+    """Return whether routine capture may run without mutating health state."""
+    path = root / CAPTURE_HEALTH_PATH
+    if not path.exists():
+        return {"allowed": True, "retry_after_seconds": 0}
+    if not is_safe_regular_file(root, path):
+        raise MemoryPluginError("capture health state is not safe")
+    try:
+        state = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as error:
+        raise MemoryPluginError("capture health state contains invalid JSON") from error
+    if not isinstance(state, dict):
+        raise MemoryPluginError("capture health state schema is invalid")
+    backoff_until = parse_utc_timestamp(state.get("backoff_until"))
+    if backoff_until is None:
+        return {"allowed": True, "retry_after_seconds": 0}
+    now = current_time or datetime.datetime.now(datetime.timezone.utc)
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=datetime.timezone.utc)
+    now = now.astimezone(datetime.timezone.utc)
+    remaining = max(0, int((backoff_until - now).total_seconds()))
+    return {
+        "allowed": remaining <= 0,
+        "retry_after_seconds": remaining,
+        "backoff_until": backoff_until.isoformat(timespec="seconds"),
+        "error_id": (
+            state.get("last_failure", {}).get("error_id")
+            if isinstance(state.get("last_failure"), dict)
+            else None
+        ),
+    }
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -2548,7 +2692,7 @@ def main(arguments: list[str] | None = None) -> int:
         emit({"success": True, "data": result})
         return 0
     except (MemoryPluginError, OSError, UnicodeError, ValueError) as error:
-        emit({"success": False, "error": str(error)})
+        emit({"success": False, "error": diagnostic_error(error)})
         return 1
 
 

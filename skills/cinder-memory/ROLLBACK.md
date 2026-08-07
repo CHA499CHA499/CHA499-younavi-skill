@@ -6,6 +6,20 @@ permalink: cinder/cortex/memory-system/code/cinder-memory/rollback
 
 # Cinder Memory YouNavi Plugin · ROLLBACK
 
+v0.4.4 不改变长期 Markdown schema，但新增 capture health 的 `error_id/occurrences/backoff_until` 字段，
+移除每 4 批人工续批，并会自动恢复旧 `awaiting_continuation` 队列。回退到 v0.4.3 前必须等待当前历史
+批次和日常提取进入终态，再停止 hook；否则旧版可能重新停在 4 批边界。旧版会忽略新增健康字段，但会
+失去子进程输出硬上限、错误聚合退避、固定小型 hook 输出，以及“当前事件失败仍执行 stale 对账”的修复。
+旧版还会在宿主未提供 `task_source` 时把关键晚报或提取完成事件误当普通事件退避，可能遗留已付费结果。
+回退不能收回已消耗 token，也不能恢复已被自动继续的旧续批边界；需要恢复旧边界时只能还原升级前完整
+`cognition/cinder-memory/` 备份，不得手工改写 batch 或 `plan_id`。
+
+v0.4.3 不改变长期 Markdown schema，但把历史批次正文预算从约 6,000 提高到约 60,000 tokens，并在
+`.state/history-bootstrap.json` 增加终态通知认领与发送结果。回退到 v0.4.2 前必须等待历史批次和通知
+`launching` 进入终态；旧版会忽略 `notice` 字段，但不会删除它。回退不会撤销已经创建的通知 conversation，
+也不能退回已经消耗的历史提炼 token。若必须维持较小批次，应从升级前 cognition 备份恢复未启动的历史
+队列；不要手工改写现有 batch 文件或 `plan_id`。
+
 v0.4.2 不改变长期 Markdown schema，但新增历史冻结队列/cursor、`collection_paused`、
 `awaiting_continuation`、批次 `plan_id` 完整性字段和 capture health 字段。回退到 v0.4.1 前先停止自动
 捕获，并等待历史状态进入 `completed`、`declined` 或已留账的 `failed`；v0.4.1 不理解暂停和继续授权，
@@ -104,6 +118,12 @@ python3 "<skill-dir>/scripts/memory_fs.py" reindex
 
 插件没有数据库迁移。回退前不要手工删除 v0.3 目录；新版本如果改变文件格式，必须先备份整个
 `cognition/cinder-memory/`。
+
+历史与日常预算分开：历史正文上限在 `scripts/history_bootstrap.py` 的
+`MAX_BATCH_BODY_ESTIMATED_TOKENS`，完整历史 prompt 上限为
+`MAX_HISTORY_EXTRACTION_ESTIMATED_TOKENS`；日常晚报仍由 `scripts/memory_fs.py` 的
+`MAX_EXTRACTION_ESTIMATED_TOKENS` 控制。调整任一上限后都要运行完整测试，不能用修改日常 8K 的方式
+替代历史 60K 配置。
 
 ## 完全删除
 

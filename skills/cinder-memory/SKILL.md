@@ -1,7 +1,7 @@
 ---
 name: cinder-memory
-description: YouNavi外置文件式个人知识库和自动记忆。用户要求启动或停止、抓取或继续提炼历史资料、查看状态、回忆或纠正长期记忆、核验来源或遗忘，或上一条Navi正在询问是否抓取历史内容时使用；只读写当前用户目录，不修改YouNavi源码。
-version: 0.4.2
+description: YouNavi外置文件式个人知识库和自动记忆。用户要求启动或停止、抓取或提炼历史资料、查看状态、回忆或纠正长期记忆、核验来源或遗忘，或上一条Navi正在询问是否抓取历史内容时使用；只读写当前用户目录，不修改YouNavi源码。
+version: 0.4.4
 exposure: on-trigger
 permalink: cinder/cortex/memory-system/code/cinder-memory/skill
 ---
@@ -31,34 +31,24 @@ permalink: cinder/cortex/memory-system/code/cinder-memory/skill
 单纯询问功能、状态或用法不等于授权。
 
 用户肯定回答首次询问，或明确要求“补抓历史记忆”时，运行 `history_bootstrap.py accept`。成功后明确
-回复：“历史抓取已开始。为控制消耗，本次最多提炼 4 批；如仍有剩余，查看状态会显示
-`awaiting_continuation`，说‘继续历史提炼’即可继续。”该任务完成后
+回复：“历史抓取和提炼会在后台串行完成；完成或失败时，Cinder Memory 会主动在 YouNavi 创建一条
+结果回执。”该任务完成后
 hook 自动抓取当前用户全部历史会话、文件和录音，只做换行/NUL 规范化及正文 SHA-256 精确去重；
 同正文保留更新时间最新项。先写 `incoming/history-bootstrap/manifest.json`，再串行启动有界提炼批次。
 任一资料读取失败时仍保留含 `failures` 的 manifest，但立即失败关闭，不建批或调用模型；只有用户
 再次明确 accept 才重新扫描。不得评分、按重要性淘汰、语义近似去重或丢弃正文。用户拒绝时运行
 `history_bootstrap.py decline`；拒绝状态不重复询问，但以后明确要求时可重新 accept。
 
-首次授权最多连续提炼 4 批。达到边界后状态为 `awaiting_continuation`；用户在该上下文明确说“继续”或
-“继续历史提炼”时，先运行 `history_bootstrap.py status` 取得当前 `plan_id`，再执行：
-
-```bash
-python3 "${SKILL_DIR}/scripts/history_bootstrap.py" continue --plan-id "<plan_id>"
-```
-
-每次继续仍只授权最多 4 批。错误或过期 `plan_id` 必须拒绝；不得用新的 accept 绕过继续边界。
-
 ## 自动工作方式
 
-启动后不需要手动抓取或整理：
-
-日常记忆只能由自动捕获和晚报提炼产生。不要等待用户逐条下达记忆指令，也不要提供新的手动写入
-入口。
+日常记忆只能由自动捕获和晚报提炼产生。不要等待用户逐条下达记忆指令，也不要提供新的手动写入入口。
 
 - 每个普通任务完成时，hook 覆盖保存该 conversation 当天的完整证据快照；不调用模型。
 - YouNavi 晚报完成时，hook 保存晚报并构造最多约 8,000 tokens 的当日提取输入。
 - 每个日期只创建一个有效 `source=cinder_memory_extract` 提取任务；无效输出最多自动重试一次。
-- 首次历史回填先冻结全部来源、完成全局精确去重，再以 `source=cinder_memory_history_extract` 串行提炼；每批失败只补试一次。
+- 首次历史回填先冻结全部来源、完成全局精确去重，再以 `source=cinder_memory_history_extract` 串行提炼；每批正文最多约 60,000 tokens，失败只补试一次。
+- 历史流程进入完成或失败终态时，以 `source=cinder_memory_history_notice` 创建一次可见回执；通知任务不参与捕获、历史扫描或记忆提炼。
+- hook 错误只保存固定长度的脱敏单行摘要和 `error_id`；同一链路连续失败 3 次后自动短时退避，关键晚报和提取完成事件不被退避跳过。
 - 本地校验来源、置信度、稳定键和冲突后，分别写入 `digests/`、`memory/` 或待确认 `inbox/`。
 - `incoming/` 和 `digests/` 不参加普通回忆；只有命中的少量长期记忆正文会进入上下文。
 
@@ -71,7 +61,7 @@ python3 "${SKILL_DIR}/scripts/history_bootstrap.py" continue --plan-id "<plan_id
 用户要求查看状态时：
 
 1. 分别运行 `memory_fs.py status` 和 `history_bootstrap.py status`，报告数据目录、长期记忆数、待确认天数、
-   最近 hook 健康状态、最近提取状态、历史回填进度与预计输入量。
+   最近 hook 健康状态、最近提取状态、历史回填进度、预计输入量与主动回执状态。
 2. 激活 `hook-author`，只读 `GET /ai/option`，确认自动捕获 hook 是否存在且唯一。
 
 用户明确要求停止时，先读取两份状态。日常状态为 `launching/triggered/applying`，或历史状态为

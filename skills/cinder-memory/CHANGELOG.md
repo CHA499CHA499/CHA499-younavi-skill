@@ -6,6 +6,39 @@ permalink: cinder/cortex/memory-system/code/cinder-memory/changelog
 
 # Cinder Memory YouNavi Plugin · CHANGELOG
 
+## 2026-08-07 v0.4.4
+
+- 修复当前完成事件失败时提前退出、导致后续历史过期对账永远执行不到的问题；失败出口现在仍独立执行
+  日常/历史 stale reconciliation，再尝试发送一次终态回执。历史状态公开当前批次、task/conversation ID、
+  阶段起点、年龄和 stale 阈值，便于直接判断卡在哪一批。
+- `agent-cli` stdout/stderr 改为临时文件流并设置 4,000,000/64,000 字节硬上限，超限立即终止子进程；
+  错误统一脱敏、单行化、截到 480 字符并附稳定 `error_id`，不再把外部错误正文透传到 hook stdout。
+- capture health 对相同错误聚合次数；连续失败 3 次后按 5 分钟、30 分钟、2 小时、6 小时退避。普通事件
+  在退避期只返回固定小摘要；晚报及日常/历史提取完成事件仍处理，成功后解除退避。异步 hook 已持久化
+  失败后返回退出码 0，避免 YouNavi 为同一外部故障持续写 warning。
+- 兼容当前 YouNavi `task.completed` 未注入 `task_source` 的真实 payload：退避期先在身份校验后读取一次
+  conversation source，关键晚报/提取完成事件继续处理并复用该响应，普通事件仍跳过。健康状态中的
+  结构化 `error_id` 与错误摘要尾部 ID 现在严格一致。
+- 首次历史询问的一次同意现在覆盖冻结出的全部批次，后台串行跑完，不再每 4 批要求用户手动继续；
+  v0.4.2/v0.4.3 遗留的 `awaiting_continuation` 会在下一次 hook 自动恢复，旧 `continue` CLI 已删除。
+- 回归测试增至 128 项，新增 2MB 错误、子进程输出硬上限、重复故障聚合/退避、真实宿主 payload 旁路、失败后仍做维护、旧续批
+  状态自动迁移和卡死批次诊断覆盖。
+
+## 2026-08-05 v0.4.3
+
+- 首次历史对齐继续由异步 `task.completed` hook 驱动；进入完成、等待继续或失败终态后，主动创建一条
+  `source=cinder_memory_history_notice` 的可见 YouNavi `simple_chat` 回执。完成回执包含扫描、唯一材料、
+  精确重复、批次、新增长期记忆和待确认统计；等待继续回执给出剩余批次与继续口令。
+- 通知发送先在历史状态中原子认领，同一终态只发送一次；发送结果不确定时失败关闭且不自动重试，避免
+  重复对话。通过身份校验后的 hook 即使在历史扫描异常出口也会尝试发送失败回执；通知 source 被日常
+  hook 和历史来源扫描同时排除，不会形成递归或记忆污染。
+- 历史批次正文预算从约 6,000 提升到最多约 60,000 tokens，包含固定指令的完整 prompt 上限为约
+  64,000 tokens；日常晚报提取仍保持最多约 8,000 tokens，不受本次调整影响。
+- 历史 180 秒采集预算从 `collect_and_launch` 入口开始计时，包含首次全来源队列冻结；冻结或逐项读取
+  超时进入可恢复的 `collection_paused`，不误报资料读取失败，也不启动模型。
+- 回归测试增至 121 项，覆盖 60K 历史预算、三种通知、通知幂等/模糊失败关闭、异常出口通知、通知来源隔离及采集冻结
+  计入预算。
+
 ## 2026-08-05 v0.4.2
 
 - `SKILL.md` 删除无效 `allowed-tools`，把触发描述收成 YouNavi frontmatter 解析器可完整保留的一行；

@@ -31,6 +31,13 @@ INTERNAL_SOURCES = {
     LEGACY_CONSOLIDATION_SOURCE,
     EXTRACTION_SOURCE,
     history_bootstrap.HISTORY_EXTRACTION_SOURCE,
+    history_bootstrap.HISTORY_NOTICE_SOURCE,
+}
+BACKOFF_BYPASS_SOURCES = {
+    EVENING_REPORT_SOURCE,
+    EXTRACTION_SOURCE,
+    history_bootstrap.HISTORY_EXTRACTION_SOURCE,
+    history_bootstrap.HISTORY_NOTICE_SOURCE,
 }
 
 
@@ -190,7 +197,7 @@ def completed_task_date(
 
 
 def call_conversation(cli_path: str, conversation_id: str) -> dict[str, typing.Any]:
-    result = subprocess.run(
+    result = memory_fs.run_bounded_subprocess(
         [
             cli_path,
             "--no-auto-start",
@@ -200,9 +207,6 @@ def call_conversation(cli_path: str, conversation_id: str) -> dict[str, typing.A
             "show",
             conversation_id,
         ],
-        capture_output=True,
-        text=True,
-        check=False,
         timeout=20,
     )
     try:
@@ -210,7 +214,12 @@ def call_conversation(cli_path: str, conversation_id: str) -> dict[str, typing.A
     except json.JSONDecodeError as error:
         raise memory_fs.MemoryPluginError("agent-cli returned invalid JSON") from error
     if result.returncode != 0 or not payload.get("success"):
-        raise memory_fs.MemoryPluginError(str(payload.get("error") or result.stderr or "agent-cli failed"))
+        raise memory_fs.MemoryPluginError(
+            memory_fs.diagnostic_error(
+                payload.get("error") or result.stderr or "agent-cli failed",
+                "agent-cli conversation lookup failed",
+            )
+        )
     data = payload.get("data")
     if not isinstance(data, dict):
         raise memory_fs.MemoryPluginError("agent-cli conversation data is missing")
@@ -332,7 +341,7 @@ def build_extraction_prompt(*, date: str, evidence: str) -> str:
 
 def launch_extraction(cli_path: str, *, date: str, evidence: str) -> dict[str, str]:
     prompt = build_extraction_prompt(date=date, evidence=evidence)
-    result = subprocess.run(
+    result = memory_fs.run_bounded_subprocess(
         [
             cli_path,
             "--no-auto-start",
@@ -346,9 +355,6 @@ def launch_extraction(cli_path: str, *, date: str, evidence: str) -> dict[str, s
             "--title",
             f"Cinder Memory 日终提取 {date}",
         ],
-        capture_output=True,
-        text=True,
-        check=False,
         timeout=25,
     )
     try:
@@ -357,7 +363,10 @@ def launch_extraction(cli_path: str, *, date: str, evidence: str) -> dict[str, s
         raise memory_fs.MemoryPluginError("agent-cli chat send returned invalid JSON") from error
     if result.returncode != 0 or not payload.get("success"):
         raise memory_fs.MemoryPluginError(
-            str(payload.get("error") or result.stderr or "agent-cli chat send failed")
+            memory_fs.diagnostic_error(
+                payload.get("error") or result.stderr or "agent-cli chat send failed",
+                "agent-cli chat send failed",
+            )
         )
     data = payload.get("data")
     if not isinstance(data, dict):
@@ -502,21 +511,22 @@ def apply_extraction_completion(
             expected_date=expected_date,
         )
     except memory_fs.MemoryPluginError as error:
+        error_text = memory_fs.diagnostic_error(error, "extraction apply failed")
         if allow_retry:
             return retry_extraction(
                 cli_path=cli_path,
                 root=root,
                 conversation_id=conversation_id,
                 state=state,
-                error=str(error),
+                error=error_text,
             )
         memory_fs.update_consolidation_result(
             root,
             conversation_id=conversation_id,
             status="failed",
-            error=str(error),
+            error=error_text,
         )
-        return {"failed": True, "error": str(error), "state": claim["path"]}
+        return {"failed": True, "error": error_text, "state": claim["path"]}
 
     if not memory_fs.update_consolidation_result(
         root,
@@ -621,13 +631,17 @@ def capture_completed_task(
     *,
     cli_path: str,
     root: pathlib.Path,
+    conversation: dict[str, typing.Any] | None = None,
 ) -> dict[str, typing.Any]:
     conversation_id = payload.get("conversation_id")
     task_id = payload.get("task_id")
     if not isinstance(conversation_id, str) or not conversation_id:
         return {"skipped": "missing conversation_id"}
-    conversation = call_conversation(cli_path, conversation_id)
+    if conversation is None:
+        conversation = call_conversation(cli_path, conversation_id)
     source = str(conversation.get("source") or "app").strip() or "app"
+    if source == history_bootstrap.HISTORY_NOTICE_SOURCE:
+        return {"skipped": "history notice task"}
     if source == LEGACY_CONSOLIDATION_SOURCE:
         return {"skipped": "legacy consolidation task"}
 
@@ -690,7 +704,7 @@ def capture_completed_task(
                 evidence=evidence,
             )
         except Exception as error:
-            error_text = str(error).strip() or error.__class__.__name__
+            error_text = memory_fs.diagnostic_error(error, "daily extraction launch failed")
             memory_fs.fail_consolidation_trigger(
                 root,
                 report_task_id=normalized_task_id,
@@ -747,6 +761,8 @@ def load_payload() -> dict[str, typing.Any]:
 def main() -> int:
     payload: dict[str, typing.Any] = {}
     root: pathlib.Path | None = None
+    cli_path: str | None = None
+    identity_validated = False
     try:
         payload = load_payload()
         cli_path = os.environ.get("YOUNAVI_AGENT_CLI")
@@ -754,13 +770,43 @@ def main() -> int:
             raise memory_fs.MemoryPluginError("YOUNAVI_AGENT_CLI is missing")
         root = memory_fs.data_root()
         history_bootstrap.validate_hook_identity(root, payload)
-        result = capture_completed_task(payload, cli_path=cli_path, root=root)
+        identity_validated = True
+        gate = memory_fs.capture_gate(root)
+        task_source = str(payload.get("task_source") or "").strip()
+        preloaded_conversation: dict[str, typing.Any] | None = None
+        if not gate["allowed"]:
+            # Current YouNavi task.completed payloads may omit task_source. Resolve it once so
+            # backoff cannot discard evening reports or already-paid extraction completions.
+            if not task_source:
+                conversation_id = payload.get("conversation_id")
+                if isinstance(conversation_id, str) and conversation_id:
+                    preloaded_conversation = call_conversation(cli_path, conversation_id)
+                    task_source = str(preloaded_conversation.get("source") or "").strip()
+            if task_source not in BACKOFF_BYPASS_SOURCES:
+                memory_fs.emit(
+                    {
+                        "success": True,
+                        "status": "backoff",
+                        "retry_after_seconds": gate["retry_after_seconds"],
+                        "error_id": gate.get("error_id"),
+                    }
+                )
+                return 0
+        result = capture_completed_task(
+            payload,
+            cli_path=cli_path,
+            root=root,
+            conversation=preloaded_conversation,
+        )
         reconciled = reconcile_overdue_extractions(cli_path=cli_path, root=root)
         if reconciled:
             result["overdue_reconciliations"] = reconciled
         bootstrap = history_bootstrap.maybe_start(root, cli_path=cli_path)
         if bootstrap is not None:
             result["history_bootstrap"] = bootstrap
+        notice = history_bootstrap.maybe_launch_history_notice(root, cli_path=cli_path)
+        if notice is not None:
+            result["history_notice"] = notice
         memory_fs.record_capture_health(
             root,
             success=True,
@@ -768,15 +814,10 @@ def main() -> int:
             conversation_id=payload.get("conversation_id"),
             task_id=payload.get("task_id"),
         )
-        memory_fs.emit({"success": True, "data": result})
+        memory_fs.emit({"success": True, "status": "processed"})
         return 0
-    except (
-        json.JSONDecodeError,
-        OSError,
-        subprocess.SubprocessError,
-        UnicodeError,
-        memory_fs.MemoryPluginError,
-    ) as error:
+    except Exception as error:
+        error_text = memory_fs.diagnostic_error(error, "automatic capture failed")
         if root is not None:
             try:
                 memory_fs.record_capture_health(
@@ -785,12 +826,22 @@ def main() -> int:
                     event_id=payload.get("hook_run_id") or payload.get("task_id") or "unknown",
                     conversation_id=payload.get("conversation_id"),
                     task_id=payload.get("task_id"),
-                    error=error,
+                    error=error_text,
                 )
             except (OSError, UnicodeError, memory_fs.MemoryPluginError):
                 pass
-        memory_fs.emit({"success": False, "error": str(error)})
-        return 1
+        if root is not None and cli_path and identity_validated:
+            try:
+                reconcile_overdue_extractions(cli_path=cli_path, root=root)
+                history_bootstrap.maybe_start(root, cli_path=cli_path)
+            except Exception:
+                pass
+            try:
+                history_bootstrap.maybe_launch_history_notice(root, cli_path=cli_path)
+            except Exception:
+                pass
+        memory_fs.emit({"success": False, "status": "failed", "error": error_text})
+        return 0
 
 
 if __name__ == "__main__":

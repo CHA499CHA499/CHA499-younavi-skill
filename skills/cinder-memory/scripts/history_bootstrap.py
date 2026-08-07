@@ -24,6 +24,7 @@ import memory_fs
 
 FIXED_PROMPT = "新的一启动，要不要把你以往的内容进行一次快速的抓取和提炼？"
 HISTORY_EXTRACTION_SOURCE = "cinder_memory_history_extract"
+HISTORY_NOTICE_SOURCE = "cinder_memory_history_notice"
 HISTORY_STATE_PATH = pathlib.Path(memory_fs.STATE_DIR_NAME) / "history-bootstrap.json"
 HISTORY_INCOMING_DIR = pathlib.Path(memory_fs.INCOMING_DIR_NAME) / "history-bootstrap"
 HISTORY_BATCH_DIR = pathlib.Path(memory_fs.STATE_DIR_NAME) / "history-bootstrap" / "batches"
@@ -35,11 +36,12 @@ CINDER_INTERNAL_SOURCES = {
     "cinder_memory",
     "cinder_memory_extract",
     HISTORY_EXTRACTION_SOURCE,
+    HISTORY_NOTICE_SOURCE,
 }
 NON_PRIMARY_HISTORY_SOURCES = {*CINDER_INTERNAL_SOURCES, "evening_report"}
-MAX_BATCH_BODY_ESTIMATED_TOKENS = 6_000
-MAX_MATERIAL_PART_ESTIMATED_TOKENS = 5_200
-MAX_BATCHES_PER_AUTHORIZATION = 4
+MAX_BATCH_BODY_ESTIMATED_TOKENS = 60_000
+MAX_MATERIAL_PART_ESTIMATED_TOKENS = 52_000
+MAX_HISTORY_EXTRACTION_ESTIMATED_TOKENS = 64_000
 COLLECTION_RUN_BUDGET_SECONDS = 180
 MAX_EXTRACTION_RETRIES = 1
 MAX_STALE_RECOVERIES = 1
@@ -47,6 +49,7 @@ COLLECTING_STALE_SECONDS = 15 * 60
 LAUNCHING_STALE_SECONDS = 5 * 60
 RUNNING_STALE_SECONDS = 6 * 60 * 60
 APPLYING_STALE_SECONDS = 30 * 60
+NOTICE_LAUNCHING_STALE_SECONDS = 5 * 60
 MAX_CLOCK_SKEW_SECONDS = 5 * 60
 
 
@@ -243,11 +246,11 @@ def record_decision(root: pathlib.Path, accepted: bool) -> dict[str, typing.Any]
                 "plan_id",
                 "estimated_input_tokens",
                 "worst_case_input_tokens",
-                "authorized_batch_limit",
                 "remaining_batches",
                 "batches",
                 "active_batch_id",
                 "extraction_date",
+                "notice",
             ):
                 state.pop(key, None)
         save_state(root, state)
@@ -273,14 +276,51 @@ def bootstrap_status(root: pathlib.Path) -> dict[str, typing.Any]:
             "plan_id",
             "estimated_input_tokens",
             "worst_case_input_tokens",
-            "authorized_batch_limit",
             "remaining_batches",
             "collection_cursor",
             "collection_total",
             "error",
+            "notice",
         )
         if key in state
     }
+    batches = state.get("batches")
+    if isinstance(batches, list):
+        active = next(
+            (
+                item
+                for item in batches
+                if isinstance(item, dict)
+                and item.get("status") in {"launching", "running", "applying"}
+            ),
+            None,
+        )
+        if active is not None:
+            phase = _string(active.get("status"))
+            timestamp_field = {
+                "launching": "launch_claimed_at",
+                "running": "launched_at",
+                "applying": "completion_claimed_at",
+            }[phase]
+            stale_after_seconds = {
+                "launching": LAUNCHING_STALE_SECONDS,
+                "running": RUNNING_STALE_SECONDS,
+                "applying": APPLYING_STALE_SECONDS,
+            }[phase]
+            phase_started_at = _string(active.get(timestamp_field))
+            started = _timestamp(phase_started_at)
+            now = datetime.datetime.now(datetime.timezone.utc)
+            age_seconds = max(0, int((now - started).total_seconds())) if started else None
+            result["active_batch"] = {
+                "batch_id": active.get("batch_id"),
+                "status": phase,
+                "task_id": active.get("task_id"),
+                "conversation_id": active.get("conversation_id"),
+                "phase_started_at": phase_started_at or None,
+                "age_seconds": age_seconds,
+                "stale_after_seconds": stale_after_seconds,
+                "stale": _is_stale(phase_started_at, stale_after_seconds, now=now),
+            }
     result["prompt"] = FIXED_PROMPT
     return result
 
@@ -844,7 +884,7 @@ def build_batches(
         if current and (
             memory_fs.estimate_tokens(proposed_evidence) > MAX_BATCH_BODY_ESTIMATED_TOKENS
             or memory_fs.estimate_tokens(proposed_prompt)
-            > memory_fs.MAX_EXTRACTION_ESTIMATED_TOKENS
+            > MAX_HISTORY_EXTRACTION_ESTIMATED_TOKENS
         ):
             batches.append(current)
             current = [piece]
@@ -868,7 +908,7 @@ def build_batches(
             body_estimated_tokens = memory_fs.estimate_tokens(text)
             if body_estimated_tokens > MAX_BATCH_BODY_ESTIMATED_TOKENS:
                 raise HistoryBootstrapError("one history batch exceeds the evidence body budget")
-            if estimated_input_tokens > memory_fs.MAX_EXTRACTION_ESTIMATED_TOKENS:
+            if estimated_input_tokens > MAX_HISTORY_EXTRACTION_ESTIMATED_TOKENS:
                 raise HistoryBootstrapError("one history material part exceeds extraction budget")
             memory_fs.validate_write_target(root, path)
             memory_fs.atomic_write(path, text)
@@ -906,42 +946,6 @@ def extraction_plan_id(batches: list[dict[str, typing.Any]]) -> str:
     ]
     encoded = json.dumps(identity, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()[:20]
-
-
-def authorize_next_segment(root: pathlib.Path, plan_id: str) -> dict[str, typing.Any]:
-    plan_id = memory_fs.single_line("plan_id", plan_id, 64)
-    with memory_fs.write_lock(root):
-        state = load_state(root)
-        if state is None or state.get("status") != "awaiting_continuation":
-            raise HistoryBootstrapError("history extraction is not awaiting continuation")
-        if state.get("plan_id") != plan_id:
-            raise HistoryBootstrapError("history extraction plan_id does not match")
-        batches = state.get("batches")
-        if not isinstance(batches, list):
-            raise HistoryBootstrapError("history bootstrap batches are missing")
-        calculated_plan_id = extraction_plan_id(
-            [typing.cast(dict[str, typing.Any], item) for item in batches if isinstance(item, dict)]
-        )
-        if calculated_plan_id != plan_id:
-            raise HistoryBootstrapError("history extraction plan integrity check failed")
-        completed = sum(
-            1 for item in batches if isinstance(item, dict) and item.get("status") == "applied"
-        )
-        current_limit = _counter(state.get("authorized_batch_limit"))
-        if current_limit < completed:
-            raise HistoryBootstrapError("history authorization state is invalid")
-        next_limit = min(len(batches), max(current_limit, completed) + MAX_BATCHES_PER_AUTHORIZATION)
-        state["authorized_batch_limit"] = next_limit
-        state["remaining_batches"] = max(len(batches) - completed, 0)
-        state["status"] = "prepared"
-        state["continued_at"] = memory_fs.now_utc()
-        save_state(root, state)
-    return {
-        "status": "prepared",
-        "plan_id": plan_id,
-        "authorized_batch_limit": next_limit,
-        "remaining_batches": max(len(batches) - completed, 0),
-    }
 
 
 def build_extraction_prompt(batch_id: str, plan_date: str, evidence: str) -> str:
@@ -1031,7 +1035,7 @@ def read_verified_batch(
         raise HistoryBootstrapError("history extraction batch input estimate changed")
     if body_tokens > MAX_BATCH_BODY_ESTIMATED_TOKENS:
         raise HistoryBootstrapError("history extraction batch exceeds the evidence body budget")
-    if prompt_tokens > memory_fs.MAX_EXTRACTION_ESTIMATED_TOKENS:
+    if prompt_tokens > MAX_HISTORY_EXTRACTION_ESTIMATED_TOKENS:
         raise HistoryBootstrapError("history extraction batch exceeds the input budget")
     return evidence
 
@@ -1040,7 +1044,7 @@ def launch_batch(
     cli_path: str, *, batch_id: str, plan_date: str, evidence: str
 ) -> dict[str, str]:
     prompt = build_extraction_prompt(batch_id, plan_date, evidence)
-    result = subprocess.run(
+    result = memory_fs.run_bounded_subprocess(
         [
             cli_path,
             "--no-auto-start",
@@ -1054,9 +1058,6 @@ def launch_batch(
             "--title",
             f"Cinder Memory 历史提取 {batch_id}",
         ],
-        capture_output=True,
-        text=True,
-        check=False,
         timeout=25,
     )
     try:
@@ -1065,7 +1066,10 @@ def launch_batch(
         raise HistoryBootstrapError("agent-cli history extraction returned invalid JSON") from error
     if result.returncode != 0 or not payload.get("success"):
         raise HistoryBootstrapError(
-            str(payload.get("error") or result.stderr or "agent-cli history extraction failed")
+            memory_fs.diagnostic_error(
+                payload.get("error") or result.stderr or "agent-cli history extraction failed",
+                "agent-cli history extraction failed",
+            )
         )
     data = payload.get("data")
     if not isinstance(data, dict):
@@ -1078,7 +1082,7 @@ def launch_batch(
 
 
 def call_conversation(cli_path: str, conversation_id: str) -> dict[str, typing.Any]:
-    result = subprocess.run(
+    result = memory_fs.run_bounded_subprocess(
         [
             cli_path,
             "--no-auto-start",
@@ -1088,9 +1092,6 @@ def call_conversation(cli_path: str, conversation_id: str) -> dict[str, typing.A
             "show",
             conversation_id,
         ],
-        capture_output=True,
-        text=True,
-        check=False,
         timeout=20,
     )
     try:
@@ -1099,7 +1100,10 @@ def call_conversation(cli_path: str, conversation_id: str) -> dict[str, typing.A
         raise HistoryBootstrapError("agent-cli returned invalid history conversation JSON") from error
     if result.returncode != 0 or not payload.get("success"):
         raise HistoryBootstrapError(
-            str(payload.get("error") or result.stderr or "agent-cli conversation lookup failed")
+            memory_fs.diagnostic_error(
+                payload.get("error") or result.stderr or "agent-cli conversation lookup failed",
+                "agent-cli conversation lookup failed",
+            )
         )
     data = payload.get("data")
     if not isinstance(data, dict):
@@ -1123,11 +1127,210 @@ def completed_response(conversation: dict[str, typing.Any], task_id: str) -> str
     return None
 
 
+def _history_result_totals(state: dict[str, typing.Any]) -> dict[str, int]:
+    totals = {"created": 0, "duplicates": 0, "inbox": 0}
+    batches = state.get("batches")
+    if not isinstance(batches, list):
+        return totals
+    for batch in batches:
+        if not isinstance(batch, dict) or batch.get("status") != "applied":
+            continue
+        result = batch.get("result")
+        if not isinstance(result, dict):
+            continue
+        for key in totals:
+            totals[key] += _counter(result.get(key))
+    return totals
+
+
+def history_notice_payload(state: dict[str, typing.Any]) -> dict[str, str] | None:
+    terminal_status = _string(state.get("status"))
+    if terminal_status not in {"completed", "awaiting_continuation", "failed"}:
+        return None
+
+    scanned = _counter(state.get("scanned"))
+    unique = _counter(state.get("unique"))
+    duplicates_removed = _counter(state.get("duplicates_removed"))
+    batch_count = _counter(state.get("batch_count"))
+    completed_batches = _counter(state.get("completed_batches"))
+    remaining_batches = _counter(state.get("remaining_batches"))
+    totals = _history_result_totals(state)
+    identity = {
+        "status": terminal_status,
+        "plan_id": state.get("plan_id"),
+        "scanned": scanned,
+        "unique": unique,
+        "duplicates_removed": duplicates_removed,
+        "batch_count": batch_count,
+        "completed_batches": completed_batches,
+        "remaining_batches": remaining_batches,
+        "error_hash": hashlib.sha256(
+            _string(state.get("error")).encode("utf-8", errors="replace")
+        ).hexdigest()[:16],
+    }
+    notice_key = hashlib.sha256(
+        json.dumps(identity, ensure_ascii=False, sort_keys=True).encode("utf-8")
+    ).hexdigest()[:20]
+
+    if terminal_status == "completed":
+        title = "Cinder Memory 首次记忆对齐完成"
+        message = (
+            "首次记忆对齐已完成："
+            f"扫描 {scanned} 项，保留 {unique} 项唯一材料，精确去重 {duplicates_removed} 项；"
+            f"完成 {completed_batches or batch_count} 批提炼，新增 {totals['created']} 条长期记忆，"
+            f"{totals['inbox']} 条进入待确认。"
+        )
+    elif terminal_status == "awaiting_continuation":
+        title = "Cinder Memory 历史提炼等待继续"
+        message = (
+            f"本轮历史提炼已完成 {completed_batches} 批，还有 {remaining_batches} 批。"
+            "回复“继续历史提炼”即可继续下一轮。"
+        )
+    else:
+        title = "Cinder Memory 首次记忆对齐未完成"
+        message = (
+            "首次记忆对齐已停止，系统没有跳过失败继续写入。"
+            "请运行 /cinder-memory 查看状态，确认原因后再决定是否重新抓取。"
+        )
+    return {
+        "key": notice_key,
+        "terminal_status": terminal_status,
+        "title": title,
+        "message": message,
+    }
+
+
+def launch_history_notice(cli_path: str, *, title: str, message: str) -> dict[str, str]:
+    prompt = (
+        "你是 Cinder Memory 的通知器。不要调用工具，不要分析、改写或补充。"
+        "只逐字返回 <notice> 标签内的文字，不要返回标签本身。\n\n"
+        f"<notice>{message}</notice>"
+    )
+    result = memory_fs.run_bounded_subprocess(
+        [
+            cli_path,
+            "--no-auto-start",
+            "-f",
+            "json",
+            "chat",
+            "send",
+            prompt,
+            "--task-type",
+            "simple_chat",
+            "--source",
+            HISTORY_NOTICE_SOURCE,
+            "--title",
+            title,
+        ],
+        timeout=25,
+    )
+    try:
+        payload = json.loads(result.stdout)
+    except json.JSONDecodeError as error:
+        raise HistoryBootstrapError("agent-cli history notice returned invalid JSON") from error
+    if result.returncode != 0 or not payload.get("success"):
+        raise HistoryBootstrapError(
+            memory_fs.diagnostic_error(
+                payload.get("error") or result.stderr or "agent-cli history notice failed",
+                "agent-cli history notice failed",
+            )
+        )
+    data = payload.get("data")
+    if not isinstance(data, dict):
+        raise HistoryBootstrapError("agent-cli history notice data is missing")
+    task_id = _string(data.get("task_id")).strip()
+    conversation_id = _string(data.get("conversation_id")).strip()
+    if not task_id or not conversation_id:
+        raise HistoryBootstrapError("agent-cli did not return history notice IDs")
+    return {"task_id": task_id, "conversation_id": conversation_id}
+
+
+def maybe_launch_history_notice(
+    root: pathlib.Path, *, cli_path: str
+) -> dict[str, typing.Any] | None:
+    now = datetime.datetime.now(datetime.timezone.utc)
+    with memory_fs.write_lock(root):
+        state = load_state(root)
+        if state is None:
+            return None
+        payload = history_notice_payload(state)
+        if payload is None:
+            return None
+        notice = state.get("notice")
+        if isinstance(notice, dict) and notice.get("key") == payload["key"]:
+            notice_status = notice.get("status")
+            if notice_status != "launching":
+                return None
+            if not _is_stale(
+                notice.get("claimed_at"), NOTICE_LAUNCHING_STALE_SECONDS, now=now
+            ):
+                return None
+            notice["status"] = "failed"
+            notice["failed_at"] = memory_fs.now_utc()
+            notice["error"] = (
+                "history notice launch became ambiguous; it was not retried to avoid duplicates"
+            )
+            save_state(root, state)
+            return {"status": "failed", "launched": False, "key": payload["key"]}
+        state["notice"] = {
+            "key": payload["key"],
+            "terminal_status": payload["terminal_status"],
+            "status": "launching",
+            "claimed_at": memory_fs.now_utc(),
+        }
+        save_state(root, state)
+
+    try:
+        launched = launch_history_notice(
+            cli_path,
+            title=payload["title"],
+            message=payload["message"],
+        )
+    except (OSError, subprocess.SubprocessError, HistoryBootstrapError) as error:
+        error_text = memory_fs.diagnostic_error(error, "history notice launch failed")
+        with memory_fs.write_lock(root):
+            state = load_state(root)
+            notice = state.get("notice") if state is not None else None
+            if isinstance(notice, dict) and notice.get("key") == payload["key"]:
+                notice["status"] = "failed"
+                notice["failed_at"] = memory_fs.now_utc()
+                notice["error"] = error_text
+                save_state(root, typing.cast(dict[str, typing.Any], state))
+        return {
+            "status": "failed",
+            "launched": False,
+            "key": payload["key"],
+            "error": error_text,
+        }
+
+    with memory_fs.write_lock(root):
+        state = load_state(root)
+        notice = state.get("notice") if state is not None else None
+        if not isinstance(notice, dict) or notice.get("key") != payload["key"]:
+            return {
+                "status": "ignored",
+                "launched": True,
+                "reason": "history notice claim changed during launch",
+                **launched,
+            }
+        notice.update(
+            {
+                "status": "sent",
+                "sent_at": memory_fs.now_utc(),
+                "task_id": launched["task_id"],
+                "conversation_id": launched["conversation_id"],
+            }
+        )
+        save_state(root, typing.cast(dict[str, typing.Any], state))
+    return {"status": "sent", "launched": True, "key": payload["key"], **launched}
+
+
 def launch_next(root: pathlib.Path, cli_path: str) -> dict[str, typing.Any]:
     with memory_fs.write_lock(root):
         state = load_state(root)
         if state is None:
             raise HistoryBootstrapError("history bootstrap has not been initialized")
+        state.pop("authorized_batch_limit", None)
         batches = state.get("batches")
         if not isinstance(batches, list):
             raise HistoryBootstrapError("history bootstrap batches are missing")
@@ -1165,35 +1368,16 @@ def launch_next(root: pathlib.Path, cli_path: str) -> dict[str, typing.Any]:
             state.pop("active_batch_id", None)
             save_state(root, state)
             raise HistoryBootstrapError(str(state["error"]))
-        pending_index = batches.index(pending) + 1
-        if "authorized_batch_limit" not in state:
-            state["authorized_batch_limit"] = min(
-                len(batches), MAX_BATCHES_PER_AUTHORIZATION
-            )
-            state.setdefault("plan_id", extraction_plan_id(batches))
-            state.setdefault(
-                "estimated_input_tokens",
-                sum(_counter(item.get("estimated_tokens")) for item in batches),
-            )
-            state.setdefault(
-                "worst_case_input_tokens",
-                _counter(state.get("estimated_input_tokens"))
-                * (MAX_EXTRACTION_RETRIES + 1),
-            )
-        authorized_limit = _counter(state.get("authorized_batch_limit"))
-        if pending_index > authorized_limit:
-            completed = sum(
-                1 for item in batches if isinstance(item, dict) and item.get("status") == "applied"
-            )
-            state["status"] = "awaiting_continuation"
-            state["remaining_batches"] = max(len(batches) - completed, 0)
-            save_state(root, state)
-            return {
-                "status": "awaiting_continuation",
-                "launched": False,
-                "plan_id": state.get("plan_id"),
-                "remaining_batches": state["remaining_batches"],
-            }
+        state.setdefault("plan_id", extraction_plan_id(batches))
+        state.setdefault(
+            "estimated_input_tokens",
+            sum(_counter(item.get("estimated_tokens")) for item in batches),
+        )
+        state.setdefault(
+            "worst_case_input_tokens",
+            _counter(state.get("estimated_input_tokens"))
+            * (MAX_EXTRACTION_RETRIES + 1),
+        )
         pending["status"] = "launching"
         pending["launch_claimed_at"] = memory_fs.now_utc()
         state["active_batch_id"] = pending["batch_id"]
@@ -1217,7 +1401,7 @@ def launch_next(root: pathlib.Path, cli_path: str) -> dict[str, typing.Any]:
         _mark_batch_failure(
             root,
             batch_id=str(pending_snapshot["batch_id"]),
-            error=str(error).strip() or error.__class__.__name__,
+            error=memory_fs.diagnostic_error(error, "history extraction launch failed"),
         )
         raise
     with memory_fs.write_lock(root):
@@ -1412,9 +1596,6 @@ def collect_and_launch(
                     "estimated_input_tokens": estimated_input_tokens,
                     "worst_case_input_tokens": estimated_input_tokens
                     * (MAX_EXTRACTION_RETRIES + 1),
-                    "authorized_batch_limit": min(
-                        len(batches), MAX_BATCHES_PER_AUTHORIZATION
-                    ),
                     "remaining_batches": len(batches),
                     "extraction_date": memory_fs.today_local(),
                     "batches": batches,
@@ -1436,10 +1617,11 @@ def collect_and_launch(
             **launched,
         }
     except Exception as error:
+        error_text = memory_fs.diagnostic_error(error, "history collection failed")
         with memory_fs.write_lock(root):
             failed = load_state(root) or state
             failed["status"] = "failed"
-            failed["error"] = str(error).strip() or error.__class__.__name__
+            failed["error"] = error_text
             save_state(root, failed)
         raise
 
@@ -1617,7 +1799,9 @@ def reconcile_stale_running(
             if response_text is None:
                 error_text = "stale history extraction has no completed response"
         except (OSError, subprocess.SubprocessError, HistoryBootstrapError) as error:
-            error_text = f"stale history extraction reconciliation failed: {error}"
+            error_text = memory_fs.diagnostic_error(
+                error, "stale history extraction reconciliation failed"
+            )
     if response_text is not None:
         return apply_completed_extraction(
             root,
@@ -1638,6 +1822,13 @@ def reconcile_stale_running(
 
 
 def maybe_start(root: pathlib.Path, *, cli_path: str) -> dict[str, typing.Any] | None:
+    with memory_fs.write_lock(root):
+        legacy_state = load_state(root)
+        if legacy_state is not None and legacy_state.get("status") == "awaiting_continuation":
+            legacy_state["status"] = "prepared"
+            legacy_state.pop("authorized_batch_limit", None)
+            legacy_state["resumed_by_version"] = memory_fs.VERSION
+            save_state(root, legacy_state)
     reconciled = reconcile_stale_running(root, cli_path=cli_path)
     if reconciled is not None:
         return reconciled
@@ -1717,6 +1908,7 @@ def _mark_batch_failure(
     batch_id: str,
     error: str,
 ) -> dict[str, typing.Any]:
+    error = memory_fs.diagnostic_error(error, "history batch failed")
     with memory_fs.write_lock(root):
         state = load_state(root)
         if state is None or not isinstance(state.get("batches"), list):
@@ -1800,7 +1992,9 @@ def apply_completed_extraction(
                 }
             target["status"] = "launching"
             target["retry_count"] = retry_count + 1
-            target["previous_error"] = str(error)
+            target["previous_error"] = memory_fs.diagnostic_error(
+                error, "history extraction failed"
+            )
             target["launch_claimed_at"] = memory_fs.now_utc()
             _archive_current_attempt(target, "invalid-plan-retry")
             fresh["active_batch_id"] = batch_id
@@ -1864,6 +2058,9 @@ def apply_completed_extraction(
         fresh["completed_batches"] = sum(
             1 for item in fresh["batches"] if isinstance(item, dict) and item.get("status") == "applied"
         )
+        fresh["remaining_batches"] = max(
+            len(fresh["batches"]) - int(fresh["completed_batches"]), 0
+        )
         fresh.pop("active_batch_id", None)
         save_state(root, fresh)
     next_result = launch_next(root, cli_path)
@@ -1877,8 +2074,6 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers.add_parser("status")
     subparsers.add_parser("accept")
     subparsers.add_parser("decline")
-    continue_parser = subparsers.add_parser("continue")
-    continue_parser.add_argument("--plan-id", required=True)
     subparsers.add_parser("run")
     return parser
 
@@ -1896,12 +2091,6 @@ def main(arguments: list[str] | None = None) -> int:
             result = record_decision(root, True)
         elif args.command == "decline":
             result = record_decision(root, False)
-        elif args.command == "continue":
-            cli_path = os.environ.get("YOUNAVI_AGENT_CLI")
-            if not cli_path:
-                raise HistoryBootstrapError("YOUNAVI_AGENT_CLI is missing")
-            authorized = authorize_next_segment(root, args.plan_id)
-            result = {**authorized, "next": launch_next(root, cli_path)}
         else:
             cli_path = os.environ.get("YOUNAVI_AGENT_CLI")
             if not cli_path:
@@ -1916,7 +2105,9 @@ def main(arguments: list[str] | None = None) -> int:
         memory_fs.emit({"success": True, "data": result})
         return 0
     except (OSError, subprocess.SubprocessError, UnicodeError, memory_fs.MemoryPluginError) as error:
-        memory_fs.emit({"success": False, "error": str(error)})
+        memory_fs.emit(
+            {"success": False, "error": memory_fs.diagnostic_error(error, "history bootstrap failed")}
+        )
         return 1
 
 

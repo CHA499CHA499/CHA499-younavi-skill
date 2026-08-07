@@ -27,14 +27,13 @@ permalink: cinder/cortex/memory-system/code/cinder-memory/interface
 | `/cinder-memory 启动` | 初始化数据目录，并幂等启用一个 `task.completed` 自动捕获 hook |
 | `开始 / 开启 / 开始记忆 / 开启记忆 / 启动记忆 / 启动自动记忆` | 与“启动”相同；必须处于 cinder-memory Skill 上下文 |
 | `/cinder-memory 查看状态` | 读取数据统计和最近提取状态，并只读核验自动 hook 是否存在且唯一 |
-| `继续 / 继续历史提炼` | 仅在 `awaiting_continuation` 时，用当前 `plan_id` 再授权最多 4 批 |
 | `/cinder-memory 停止自动捕获` | 无在途提取时只移除本插件 hook；有在途工作则失败关闭并要求终态后重试 |
 
 “启动”及上述同义表达是自动捕获的显式授权，不再二次确认；仅询问功能、状态或用法不是授权。
 hook 配置必须经 `GET /ai/option`、合并、`PUT /ai/option`、回读校验四步完成；重复启动不得创建
 重复 hook，重复停止不得报错。配置失败时目录可以保留，但调用方不得宣称自动捕获已开启，也不得调用
 `history_bootstrap.py prompt`。同一 `script_path` 已存在时必须原位更新为当前模板并去重，保证旧版 hook
-能升级为当前 v0.4.2 的 300 秒 hook。
+能升级为当前 v0.4.4 的 300 秒 hook。
 
 首次成功启动还必须运行 `history_bootstrap.py prompt`。只有首次返回 `ask=true` 时才逐字展示固定询问；
 重复启动、已拒绝、处理中或已完成均不得重复询问。肯定回答调用 `accept`，拒绝调用 `decline`；
@@ -58,10 +57,10 @@ hook 配置必须经 `GET /ai/option`、合并、`PUT /ai/option`、回读校验
 | `<user>/cognition/cinder-memory/inbox/` | 低置信、报告单源、冲突或需人工确认的候选 |
 | `<user>/cognition/cinder-memory/.state/consolidation/` | 晚报触发、提取任务和应用结果状态 |
 | `<user>/cognition/cinder-memory/.state/applied/` | 已应用结构化计划的幂等记录 |
-| `<user>/cognition/cinder-memory/.state/history-bootstrap.json` | 首次询问、抓取统计、批次队列、失败与完成状态 |
+| `<user>/cognition/cinder-memory/.state/history-bootstrap.json` | 首次询问、抓取统计、批次队列、失败/完成状态与终态回执状态 |
 | `<user>/cognition/cinder-memory/.state/history-bootstrap/batches/` | 无损切分后的有界历史提取输入 |
 | `<user>/cognition/cinder-memory/.state/history-bootstrap/collection/` | 冻结的全来源队列、逐项结果和断点 cursor |
-| `<user>/cognition/cinder-memory/.state/capture-health.json` | 最近 hook 成败、连续失败数和累计失败数 |
+| `<user>/cognition/cinder-memory/.state/capture-health.json` | 最近 hook 成败、聚合错误 ID/次数、退避截止时间和累计失败数 |
 | `<user>/cognition/cinder-memory/.write.lock` | 跨进程写锁 |
 | `<user>/cognition/cinder-memory/{profile,...,sessions,.consolidation}/` | v0.1/v0.2 只读兼容数据；不删除，不再写新数据 |
 | 其他 username / YouNavi 源码仓 | 不读取、不写入 |
@@ -80,15 +79,15 @@ history_bootstrap.py prompt
 history_bootstrap.py status
 history_bootstrap.py accept
 history_bootstrap.py decline
-history_bootstrap.py continue --plan-id PLAN_ID
 history_bootstrap.py run
 ```
 
 `sessions --date` 和 `consolidation --date` 仅为 v0.2 调用方保留，分别映射到 `incoming` 列表与
 `extraction-input.md`；新调用方不得依赖这两个旧名字。
 
-stdout 始终为一行 JSON：成功 `{success:true,data:...}`，失败
-`{success:false,error:"..."}`；失败时退出码为 1。
+公开 CLI stdout 始终为一行 JSON：成功 `{success:true,data:...}`，失败
+`{success:false,error:"..."}`；CLI 失败时退出码为 1。异步 hook 的宿主输出固定为小型 JSON 摘要；处理
+失败已经写入 capture health，因此 hook 返回退出码 0，避免 YouNavi 对同一外部故障重复写 warning。
 
 `request` 只接受位于当前数据根 `.requests/` 下、最大 1MB 的 `.json` 文件。动作：
 
@@ -113,7 +112,7 @@ stdout 始终为一行 JSON：成功 `{success:true,data:...}`，失败
 脚本内推断，必须通过 YouNavi `GET /ai/option` 只读核验。
 
 历史 CLI 的 stdout 同样是一行 JSON。`prompt` 只在首次建状态时返回 `ask=true`；`accept/decline` 幂等
-记录决定；`continue` 只接受状态中完全相同的 `plan_id`；`run` 供 hook 或故障恢复使用，要求 YouNavi
+记录决定；一次 `accept` 授权本次冻结出的全部历史批次在后台串行完成；`run` 供 hook 或故障恢复使用，要求 YouNavi
 注入 `YOUNAVI_AGENT_CLI`、`YOUNAVI_API_BASE_URL` 和 `YOUNAVI_AUTH_TOKEN_FILE`，不得由用户手填 token。
 
 ## 首次历史回填契约
@@ -139,8 +138,8 @@ YouNavi 任务继续，不重拉列表。插件没有独立后台调度器，因
 文本文件仅在由安装位置确定的当前用户目录内按完整正文读取；二进制或目录外文件保存 metadata-only，
 不额外执行 ASR、OCR 或格式解析。去重结束后才允许生成批次；切分必须覆盖每一个字符且不改变原始
 material。原始会话和完整文本可支撑高置信长期记忆；晚报与 metadata-only 只可生成 digest 或待确认项。
-每批材料预计输入正文约 6,000 tokens、完整 prompt 不超过约 8,000，使用
-`source=cinder_memory_history_extract` 串行运行；首次和每次继续最多授权 4 批。状态同时保存 `plan_id`、
+每批材料预计输入正文最多约 60,000 tokens、完整 prompt 不超过约 64,000，使用
+`source=cinder_memory_history_extract` 串行运行；一次同意后处理全部冻结批次，不再增加人工续批口令。状态同时保存 `plan_id`、
 预计输入量和含一次补试的最坏预计输入量；这是输入估算，不是含输出的总 token 上限。批次正文 hash、
 来源白名单、来源日期、primary 来源和 token 估算都必须与 `plan_id` 一致，启动和补试前重新核验。
 `launching` 原子 claim 防止重复 hook 事件并发启动相同批次；该阶段超时无法排除任务已创建，必须失败
@@ -158,6 +157,7 @@ material。原始会话和完整文本可支撑高置信长期记忆；晚报与
 | `cinder_memory` | 跳过，兼容并阻断 v0.2 提炼任务递归 |
 | `cinder_memory_extract` | 只接受已登记的提取 conversation；解析最终 JSON，校验并本地应用，不再创建任务 |
 | `cinder_memory_history_extract` | 应用已登记历史批次；成功后串行启动下一批，失败最多补试一次 |
+| `cinder_memory_history_notice` | 直接跳过；这是终态可见回执，不保存为证据、不提炼、不再次通知 |
 | `evening_report` | 保存完整晚报，合并当日原始证据为有界输入，并创建一次 `source=cinder_memory_extract` 任务 |
 | 其他 | 覆盖 `incoming/YYYY-MM-DD/conversation-*.md`；同一 conversation 当天只有一个快照 |
 
@@ -178,7 +178,21 @@ material。原始会话和完整文本可支撑高置信长期记忆；晚报与
 不得重新 claim。初次或补试的 `launching` 超时都直接失败关闭，不重新创建模型任务。`triggered` 超过
 6 小时后，下一个 hook 最多对账三项登记 conversation：完整回复可补
 应用，其余失败关闭，不创建新模型任务。`applying` 超过 30 分钟因无法排除部分写入而失败关闭。完整
-计划以内容 hash 记录到 `.state/applied/`；hook 失败只返回非零，不影响原任务。
+计划以内容 hash 记录到 `.state/applied/`。当前事件捕获失败也不得阻止这次过期对账；hook 将失败写入
+capture health 并向宿主返回固定小摘要，不影响原任务。
+
+历史状态进入 `completed` 或 `failed` 后，hook 必须调用现有 `agent-cli chat send`
+创建一次 `task_type=simple_chat`、`source=cinder_memory_history_notice` 的可见 conversation。发送前以状态
+hash 原子 claim；已 `sent/failed` 或仍在有效 `launching` 的同一 key 不再发送。模糊超时按失败关闭，
+不得自动重试。`history_bootstrap.py status` 暴露通知状态、task ID、conversation ID 或脱敏错误，但通知失败
+不得改写已经成立的历史提炼终态。当前外部插件没有零 token Toast API，因此该回执会产生一次小模型回复。
+
+所有 `agent-cli` stdout/stderr 分别限制为 4,000,000/64,000 字节；超过时终止子进程，不解析或持久化超限
+正文。所有外部错误在进入状态或 hook stdout 前必须脱敏、单行化、截到 480 字符并附稳定 `error_id`。
+capture health 对同一错误聚合 `occurrences`；连续失败 3 次后开启 5 分钟起步、最长 6 小时的退避，成功
+后清除。退避只跳过普通捕获；晚报及日常/历史提取完成事件仍要处理，避免丢失已付费结果。不能依赖
+HookPayload 必有 `task_source`：当前宿主可能省略该字段，此时必须先校验用户身份，再读取并复用一次
+conversation source 做退避分流。
 
 结构化计划的本地应用规则：
 
