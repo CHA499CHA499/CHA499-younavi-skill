@@ -6,6 +6,7 @@ Personal Codex/Claude skills for YouNavi-flavored workflows.
 
 - `skills/navi-video-explain` - Explain a video from a URL or local file by transcribing it, selecting key frames, and producing a personalized Markdown image-and-text walkthrough. Current imported version: `0.5`.
 - `skills/cinder-memory` - Provide file-based personal knowledge, automatic memory, and structured evening extraction for YouNavi without modifying YouNavi source code. Current imported version: `0.4.4`.
+- `skills/jmqs-driver` - 启动、调试和维护 JMQS Driver Persona 工作台。
 
 ## Project
 
