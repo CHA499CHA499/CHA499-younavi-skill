@@ -1,0 +1,65 @@
+[
+  {
+    "id": "naval-masked-v2",
+    "path": "random-pool/masked-bust-v2/naval-masked-v2.jpg",
+    "gender": "male",
+    "palette": "deep sea blue / aged copper / charcoal black",
+    "style": "masked-bust",
+    "source": "imagegen",
+    "recommendedUse": "custom-card-fallback"
+  },
+  {
+    "id": "elon-musk-masked-v2",
+    "path": "random-pool/masked-bust-v2/elon-musk-masked-v2.jpg",
+    "gender": "male",
+    "palette": "gunmetal / dark blue / muted amber orange",
+    "style": "masked-bust",
+    "source": "imagegen",
+    "recommendedUse": "custom-card-fallback"
+  },
+  {
+    "id": "steve-jobs-masked-v2",
+    "path": "random-pool/masked-bust-v2/steve-jobs-masked-v2.jpg",
+    "gender": "male",
+    "palette": "pearl gray / black / muted dark magenta",
+    "style": "masked-bust",
+    "source": "imagegen",
+    "recommendedUse": "custom-card-fallback"
+  },
+  {
+    "id": "donald-trump-masked-v2",
+    "path": "random-pool/masked-bust-v2/donald-trump-masked-v2.jpg",
+    "gender": "male",
+    "palette": "dark wine red / navy blue / aged gold",
+    "style": "masked-bust",
+    "source": "imagegen",
+    "recommendedUse": "custom-card-fallback"
+  },
+  {
+    "id": "paul-graham-masked-v2",
+    "path": "random-pool/masked-bust-v2/paul-graham-masked-v2.jpg",
+    "gender": "male",
+    "palette": "olive green / warm ivory / charcoal black",
+    "style": "masked-bust",
+    "source": "imagegen",
+    "recommendedUse": "custom-card-fallback"
+  },
+  {
+    "id": "custom-template-male-masked-v2",
+    "path": "random-pool/masked-bust-v2/custom-template-male-masked-v2.jpg",
+    "gender": "male",
+    "palette": "dark teal / graphite / muted gray violet",
+    "style": "masked-bust",
+    "source": "imagegen",
+    "recommendedUse": "custom-card-fallback"
+  },
+  {
+    "id": "custom-template-female-masked-v2",
+    "path": "random-pool/masked-bust-v2/custom-template-female-masked-v2.jpg",
+    "gender": "female",
+    "palette": "dark crimson / aged ivory / charcoal black",
+    "style": "masked-bust",
+    "source": "imagegen",
+    "recommendedUse": "custom-card-fallback"
+  }
+]

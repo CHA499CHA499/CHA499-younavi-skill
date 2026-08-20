@@ -1,0 +1,440 @@
+.root {
+  width: 100%;
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 18px 20px 16px;
+  color: var(--text, #f2f4f7);
+  border: 1px solid var(--line, #29303b);
+  border-radius: 16px;
+  background: rgba(14, 17, 23, 0.86);
+  box-sizing: border-box;
+}
+
+.header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.header > div {
+  display: grid;
+  gap: 6px;
+}
+
+.header strong {
+  font-size: 15px;
+}
+
+.header small,
+.hint {
+  color: var(--muted, #919aa8);
+  font-size: 11px;
+}
+
+.manageButton {
+  min-height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--line-strong, #46505e);
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text, #f2f4f7);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.manageButton:hover,
+.manageButton:focus-visible {
+  border-color: var(--signal, #ef3048);
+}
+
+.eyebrow {
+  color: var(--signal, #ef3048);
+  font: 9px/1 monospace;
+  letter-spacing: 0.16em;
+}
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  justify-content: center;
+  gap: clamp(8px, 1.4vw, 16px);
+  padding: 8px 2px 16px;
+  isolation: isolate;
+}
+
+.card {
+  --card-color: #ef3048;
+  --card-tilt: 0deg;
+  position: relative;
+  z-index: var(--layer-stage, 1);
+  display: block;
+  min-width: 0;
+  aspect-ratio: 0.68;
+  overflow: visible;
+  color: var(--text, #f2f4f7);
+  border: 1px solid var(--line, #29303b);
+  border-radius: 12px;
+  background: #0a0d12;
+  text-align: left;
+  cursor: default;
+  opacity: 0;
+  transform: translateY(16px) rotate(var(--card-tilt));
+  animation: shelf-card-enter 460ms cubic-bezier(0.16, 0.82, 0.24, 1) forwards;
+  animation-delay: calc(var(--card-index) * 70ms);
+  transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease, filter 180ms ease;
+}
+
+.card:hover,
+.card:focus-within {
+  z-index: var(--layer-overlay, 3);
+  border-color: color-mix(in srgb, var(--card-color) 76%, white);
+  box-shadow: 0 22px 36px rgba(0, 0, 0, 0.38), 0 0 0 1px color-mix(in srgb, var(--card-color) 30%, transparent);
+  filter: saturate(1.08) brightness(1.05);
+  transform: translateY(-12px) translateX(calc(var(--card-tilt) * 2)) rotate(calc(var(--card-tilt) * 1.2)) scale(1.025);
+}
+
+.selected {
+  border-color: var(--card-color);
+  box-shadow: 0 0 0 1px var(--card-color), 0 15px 28px rgba(0, 0, 0, 0.28);
+}
+
+.card[data-disabled="true"] {
+  filter: grayscale(0.32);
+  opacity: 0.62;
+}
+
+.emptySlotButton {
+  cursor: pointer;
+}
+
+.brandLogo {
+  position: absolute;
+  z-index: var(--layer-content, 2);
+  top: 10px;
+  left: 10px;
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+  pointer-events: none;
+}
+
+.quickPopover {
+  position: absolute;
+  z-index: var(--layer-overlay, 3);
+  right: 8px;
+  bottom: calc(100% + 12px);
+  left: 8px;
+  display: grid;
+  gap: 5px;
+  padding: 12px;
+  overflow: hidden;
+  color: var(--text, #f2f4f7);
+  border: 1px solid color-mix(in srgb, var(--card-color) 56%, var(--line, #29303b));
+  border-radius: 10px;
+  background: rgba(13, 17, 24, 0.96);
+  box-shadow: 0 16px 32px rgba(0, 0, 0, 0.42);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(8px);
+  transition: opacity 160ms ease, transform 160ms ease;
+}
+
+.quickPopover::after {
+  position: absolute;
+  right: 18px;
+  bottom: -6px;
+  width: 10px;
+  height: 10px;
+  content: "";
+  border-right: 1px solid color-mix(in srgb, var(--card-color) 56%, var(--line, #29303b));
+  border-bottom: 1px solid color-mix(in srgb, var(--card-color) 56%, var(--line, #29303b));
+  background: rgba(13, 17, 24, 0.96);
+  transform: rotate(45deg);
+}
+
+.card:hover .quickPopover,
+.card:focus-within .quickPopover {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.popoverSuppressed .quickPopover {
+  opacity: 0;
+  transform: translateY(8px);
+}
+
+.quickPopover strong {
+  font-size: 13px;
+}
+
+.quickPopover span,
+.quickPopover p,
+.quickPopover small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.quickPopover span,
+.quickPopover p {
+  color: #c5ccd6;
+  font-size: 10px;
+}
+
+.quickPopover p {
+  margin: 0;
+  line-height: 1.45;
+  white-space: normal;
+}
+
+.quickPopover small {
+  color: var(--card-color);
+  font: 9px/1 monospace;
+}
+
+.visualLayer {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+.dragSurface {
+  position: absolute;
+  z-index: var(--layer-content, 2);
+  top: 0;
+  right: 0;
+  bottom: 40%;
+  left: 0;
+  cursor: grab;
+  touch-action: none;
+}
+
+.dragSurface:active {
+  cursor: grabbing;
+}
+
+.backdropImage,
+.foregroundImage {
+  position: absolute;
+  display: block;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.backdropImage {
+  object-fit: cover;
+  transform: scale(1.12);
+  filter: blur(16px) saturate(0.82);
+  opacity: 0.38;
+}
+
+.foregroundImage {
+  /* masked-v2 is a half-body portrait: preserve the helmet and chest silhouette, never crop to a full-body action pose. */
+  object-fit: contain;
+  object-position: 50% 20%;
+  filter: saturate(1.04) contrast(1.02);
+}
+
+.visualLayer::after {
+  position: absolute;
+  inset: 0;
+  content: "";
+  background: linear-gradient(180deg, rgba(7, 9, 13, 0.02) 40%, rgba(7, 9, 13, 0.16) 58%, rgba(7, 9, 13, 0.68) 100%);
+  pointer-events: none;
+}
+
+.emptyArt {
+  position: relative;
+  display: grid;
+  width: 100%;
+  height: 100%;
+  place-items: center;
+  background: repeating-linear-gradient(135deg, rgba(124, 141, 161, 0.06) 0 2px, transparent 2px 14px), radial-gradient(circle at 50% 28%, color-mix(in srgb, var(--card-color) 24%, #11151b), #0a0d12 72%);
+}
+
+.emptyArt i {
+  width: 34%;
+  aspect-ratio: .68;
+  border: 1px solid rgba(145, 154, 168, .42);
+  border-radius: 8px;
+  box-shadow: inset 0 0 0 1px rgba(239, 48, 72, .12);
+}
+
+.emptyArt i::after {
+  display: grid;
+  height: 100%;
+  place-items: center;
+  content: "+";
+  color: rgba(145, 154, 168, .62);
+  font-size: 22px;
+  font-style: normal;
+  font-weight: 300;
+}
+
+.inspectButton {
+  position: absolute;
+  z-index: var(--layer-content, 2);
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: flex;
+  min-height: 40%;
+  padding: 32px 14px 14px;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 10px;
+  overflow: hidden;
+  color: var(--text, #f2f4f7);
+  border: 0;
+  background: linear-gradient(180deg, rgba(7, 9, 13, 0) 0%, rgba(7, 9, 13, 0.66) 28%, rgba(7, 9, 13, 0.96) 100%);
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+}
+
+.inspectButton::before {
+  position: absolute;
+  inset: 20% 0 0;
+  content: "";
+  background: linear-gradient(180deg, transparent, rgba(7, 9, 13, 0.2));
+  backdrop-filter: blur(5px);
+  pointer-events: none;
+}
+
+.inspectButton:hover,
+.inspectButton:focus-visible {
+  background: linear-gradient(180deg, rgba(7, 9, 13, 0.04) 0%, rgba(7, 9, 13, 0.72) 28%, rgba(7, 9, 13, 0.98) 100%);
+}
+
+.inspectButton:focus-visible {
+  outline: 2px solid var(--card-color);
+  outline-offset: -4px;
+}
+
+.inspectButton:disabled {
+  cursor: default;
+}
+
+.copy,
+.icon {
+  position: relative;
+  z-index: var(--layer-content, 2);
+}
+
+.copy {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+}
+
+.copy small,
+.copy strong,
+.copy > span,
+.copy em {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.copy small {
+  color: var(--card-color);
+  font: 8px/1 monospace;
+  letter-spacing: 0.08em;
+}
+
+.copy strong {
+  font-size: 16px;
+  letter-spacing: -0.02em;
+}
+
+.copy > span {
+  color: #c5ccd6;
+  font-size: 11px;
+}
+
+.copy em {
+  color: #e4bf71;
+  font-size: 9px;
+  font-style: normal;
+}
+
+.icon {
+  display: grid;
+  width: 26px;
+  height: 26px;
+  flex: 0 0 auto;
+  place-items: center;
+  color: var(--card-color);
+  border: 1px solid color-mix(in srgb, var(--card-color) 76%, white);
+  border-radius: 50%;
+  background: rgba(7, 9, 13, 0.42);
+}
+
+.icon svg {
+  width: 20px;
+  height: 20px;
+}
+
+.hint {
+  margin: 0;
+  line-height: 1.5;
+}
+
+@keyframes shelf-card-enter {
+  from { opacity: 0; transform: translateY(16px) rotate(var(--card-tilt)); }
+  to { opacity: 1; transform: translateY(0) rotate(var(--card-tilt)); }
+}
+
+@media (max-width: 860px) {
+  .cards {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 520px) {
+  .root {
+    padding-inline: 14px;
+  }
+
+  .cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .copy strong {
+    font-size: 14px;
+  }
+
+  .inspectButton {
+    padding-inline: 10px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card {
+    opacity: 1;
+    transform: none;
+    animation: none;
+    transition: none;
+  }
+
+  .card:hover,
+  .card:focus-within {
+    transform: none;
+  }
+
+  .quickPopover {
+    transition: none;
+    transform: none;
+  }
+
+  .popoverSuppressed .quickPopover {
+    transform: none;
+  }
+}

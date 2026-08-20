@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "layer": "local-test",
+  "decadeCandidates": [
+    { "id": "decade-candidate-01", "url": "/audio/local-test/decade/candidate-01.m4a", "event": "pack-open", "sourceCandidate": 1 },
+    { "id": "decade-candidate-02", "url": "/audio/local-test/decade/candidate-02.m4a", "event": "pack-open", "sourceCandidate": 2 },
+    { "id": "decade-candidate-03", "url": "/audio/local-test/decade/candidate-03.m4a", "event": "pack-open", "sourceCandidate": 3 },
+    { "id": "decade-candidate-04", "url": "/audio/local-test/decade/candidate-04.m4a", "event": "card-deal", "sourceCandidate": 4 },
+    { "id": "decade-candidate-05", "url": "/audio/local-test/decade/candidate-05.m4a", "event": "card-deal", "sourceCandidate": 5 },
+    { "id": "decade-candidate-06", "url": "/audio/local-test/decade/candidate-06.m4a", "event": "card-deal", "sourceCandidate": 6 },
+    { "id": "decade-candidate-07", "url": "/audio/local-test/decade/candidate-07.m4a", "event": "card-deal", "sourceCandidate": 7 },
+    { "id": "decade-candidate-08", "url": "/audio/local-test/decade/candidate-08.m4a", "event": "skill-rod-select", "sourceCandidate": 8 },
+    { "id": "decade-candidate-09", "url": "/audio/local-test/decade/candidate-09.m4a", "event": "skill-rod-select", "sourceCandidate": 9 },
+    { "id": "decade-candidate-10", "url": "/audio/local-test/decade/candidate-10.m4a", "event": "skill-rod-select", "sourceCandidate": 10 },
+    { "id": "decade-candidate-11", "url": "/audio/local-test/decade/candidate-11.m4a", "event": "assembly", "sourceCandidate": 11 },
+    { "id": "decade-candidate-12", "url": "/audio/local-test/decade/candidate-12.m4a", "event": "assembly", "sourceCandidate": 12 },
+    { "id": "decade-candidate-13", "url": "/audio/local-test/decade/candidate-13.m4a", "event": "assembly", "sourceCandidate": 13 },
+    { "id": "decade-candidate-14", "url": "/audio/local-test/decade/candidate-14.m4a", "event": "assembly", "sourceCandidate": 14 },
+    { "id": "decade-candidate-15", "url": "/audio/local-test/decade/candidate-15.m4a", "event": "final-snap", "sourceCandidate": 15 },
+    { "id": "decade-candidate-16", "url": "/audio/local-test/decade/candidate-16.m4a", "event": "final-snap", "sourceCandidate": 16 }
+  ],
+  "announcers": [
+    { "id": "announcer-persona-naval", "url": "/audio/local-test/announcer/persona-naval-ravikant.m4a", "kind": "persona", "personaId": "naval" },
+    { "id": "announcer-persona-elon-musk", "url": "/audio/local-test/announcer/persona-elon-musk.m4a", "kind": "persona", "personaId": "elon-musk" },
+    { "id": "announcer-persona-steve-jobs", "url": "/audio/local-test/announcer/persona-steve-jobs.m4a", "kind": "persona", "personaId": "steve-jobs" },
+    { "id": "announcer-persona-donald-trump", "url": "/audio/local-test/announcer/persona-donald-john-trump.m4a", "kind": "persona", "personaId": "donald-trump" },
+    { "id": "announcer-persona-paul-graham", "url": "/audio/local-test/announcer/persona-paul-graham.m4a", "kind": "persona", "personaId": "paul-graham" },
+    { "id": "announcer-command-action", "url": "/audio/local-test/announcer/command-action.m4a", "kind": "command", "commandId": "action" },
+    { "id": "announcer-command-decision", "url": "/audio/local-test/announcer/command-decide.m4a", "kind": "command", "commandId": "decision" },
+    { "id": "announcer-command-explain", "url": "/audio/local-test/announcer/command-explain.m4a", "kind": "command", "commandId": "explain" },
+    { "id": "announcer-command-review", "url": "/audio/local-test/announcer/command-review.m4a", "kind": "command", "commandId": "review" }
+  ]
+}

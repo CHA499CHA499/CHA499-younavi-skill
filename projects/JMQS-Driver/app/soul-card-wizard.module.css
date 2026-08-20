@@ -1,0 +1,39 @@
+.root { display: grid; gap: 20px; padding: 24px; border: 1px solid rgba(255,255,255,.12); border-radius: 20px; background: linear-gradient(145deg, rgba(21,27,38,.98), rgba(12,16,24,.96)); color: #f4f6fb; }
+.header { display: flex; justify-content: space-between; gap: 20px; align-items: flex-start; }
+.eyebrow { color: #8ea4c8; font-size: 10px; letter-spacing: .18em; }
+.header h2 { margin: 7px 0 5px; font-size: 24px; }
+.header p, .manualNotice { margin: 0; color: #aeb8c9; font-size: 13px; line-height: 1.6; }
+.textButton, .secondaryButton { border: 0; background: transparent; color: #b8c4d9; cursor: pointer; }
+.modeSwitch { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 5px; border-radius: 12px; background: rgba(255,255,255,.06); }
+.modeSwitch button { border: 0; border-radius: 9px; padding: 11px 12px; background: transparent; color: #aeb8c9; cursor: pointer; }
+.modeSwitch .activeTab { background: #edf2fb; color: #172033; font-weight: 700; }
+.formGrid, .outputRow { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.field { display: grid; gap: 7px; color: #dfe6f2; font-size: 12px; }
+.field input, .field select, .field textarea { width: 100%; box-sizing: border-box; border: 1px solid rgba(255,255,255,.14); border-radius: 10px; padding: 10px 11px; background: rgba(255,255,255,.06); color: #f4f6fb; font: inherit; outline: none; }
+.field textarea { resize: vertical; line-height: 1.5; }
+.field input:focus, .field select:focus, .field textarea:focus { border-color: #8ea4c8; box-shadow: 0 0 0 3px rgba(142,164,200,.16); }
+.field small, .material small { color: #8d9ab0; font-size: 11px; line-height: 1.45; overflow-wrap: anywhere; }
+.soulPanel { display: grid; gap: 16px; }
+.materials, .privacy { display: grid; gap: 9px; margin: 0; padding: 13px; border: 1px solid rgba(255,255,255,.1); border-radius: 12px; }
+.materials legend, .privacy legend { padding: 0 5px; color: #dfe6f2; font-size: 12px; }
+.material, .checkRow { display: flex; gap: 10px; align-items: flex-start; color: #cfd7e5; font-size: 12px; line-height: 1.5; }
+.material label { display: grid; gap: 2px; min-width: 0; cursor: pointer; }
+.material input, .checkRow input { margin-top: 3px; accent-color: #dce7fb; }
+.metrics { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; color: #c3cede; font-size: 12px; }
+.metrics span, .metrics em { padding: 6px 8px; border-radius: 999px; background: rgba(255,255,255,.07); font-style: normal; }
+.metrics strong { flex-basis: 100%; color: #e8c88d; font-size: 11px; font-weight: 500; }
+.runtimeStatus { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 6px 10px; align-items: baseline; padding: 10px 12px; border: 1px solid rgba(142,164,200,.24); border-radius: 10px; background: rgba(8,12,18,.72); color: #cbd5e5; font-size: 11px; }
+.runtimeStatus strong { color: #ffb049; font: 10px/1 monospace; text-transform: uppercase; }
+.runtimeStatus span { line-height: 1.5; }
+.runtimeStatus code { grid-column: 2; color: #7f8da4; font-size: 10px; overflow-wrap: anywhere; }
+.runtimeStatus[data-soul-status="ready"] strong { color: #6cc18a; }
+.runtimeStatus[data-soul-status="error"] { border-color: rgba(239,48,72,.46); }
+.runtimeStatus[data-soul-status="error"] strong { color: #ff8b99; }
+.error { margin: 0; color: #ffb0b5; font-size: 12px; line-height: 1.5; }
+.outputRow { align-items: end; }
+.actions { display: flex; justify-content: flex-end; gap: 14px; align-items: center; }
+.primaryButton { border: 0; border-radius: 10px; padding: 11px 16px; background: #f0f3fa; color: #172033; font-weight: 700; cursor: pointer; }
+.primaryButton:hover, .primaryButton:focus-visible { background: #fff; }
+.primaryButton:disabled { cursor: wait; color: #70798a; background: #cbd2de; }
+@media (max-width: 680px) { .formGrid, .outputRow { grid-template-columns: 1fr; } .actions { justify-content: space-between; } }
+@media (prefers-reduced-motion: reduce) { .root *, .root *::before, .root *::after { scroll-behavior: auto !important; transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; } }

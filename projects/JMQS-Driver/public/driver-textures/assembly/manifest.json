@@ -1,0 +1,30 @@
+{
+  "schema": "persona-driver-assembly-layers/v2",
+  "source": "/driver-textures/belt-v1.png",
+  "canvas": [
+    1672,
+    941
+  ],
+  "layers": {
+    "centerCore": "/driver-textures/assembly/center-core-v2.png",
+    "leftChassis": "/driver-textures/assembly/left-chassis-v2.png",
+    "rightChassis": "/driver-textures/assembly/right-chassis-v2.png",
+    "foregroundMasks": "/driver-textures/assembly/foreground-masks-v2.png",
+    "leftSlotForeground": "/driver-textures/assembly/left-slot-foreground-v2.png",
+    "rightSlotForeground": "/driver-textures/assembly/right-slot-foreground-v2.png",
+    "rodCanonical": {
+      "canvas": [1024, 1536],
+      "alphaBbox": [384, 18, 640, 1518],
+      "energyCharged": "/driver-textures/energy-rod-charged-canonical-v1.png",
+      "skillCharged": "/driver-textures/skill-rod-charged-canonical-v1.png",
+      "tightCanvas": [256, 1500],
+      "tightAlphaBbox": [0, 0, 256, 1500],
+      "energyChargedTight": "/driver-textures/energy-rod-charged-tight-v1.png",
+      "skillChargedTight": "/driver-textures/skill-rod-charged-tight-v1.png"
+    }
+  },
+  "invariants": [
+    "all layers share 1672x941 coordinates",
+    "no persona card pixels are present"
+  ]
+}

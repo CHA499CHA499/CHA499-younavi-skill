@@ -1,0 +1,222 @@
+.scene {
+  --chassis-shift: 10.5%;
+  --chassis-rotation: 2.6deg;
+  --driver-slot-left: 27.55%;
+  --driver-slot-right: 72.45%;
+  --driver-slot-window-width: 6.76%;
+  --driver-slot-window-height: 52.2%;
+  --driver-rod-fill: 94%;
+  --driver-back-layer: var(--layer-stage);
+  --driver-side-layer: var(--layer-content);
+  --driver-card-layer: var(--layer-overlay);
+  --driver-front-layer: var(--layer-hands);
+  --driver-effect-layer: var(--layer-hands);
+}
+
+.scene :global(.driver-assembly) {
+  isolation: isolate;
+  overflow: visible;
+  perspective: 900px;
+}
+
+.scene :global(.texture-persona-card) {
+  left: 50%;
+  top: 50%;
+  z-index: var(--driver-card-layer);
+  transform: translate(-50%, -50%);
+}
+
+.scene[data-closure-state="closing"] :global(.texture-persona-card),
+.scene[data-closure-state="final"] :global(.texture-persona-card) {
+  transform: translate(-50%, -50%);
+  transition: none;
+}
+
+.scene :global(.texture-driver-foreground),
+.scene :global(.texture-driver-glow) {
+  z-index: var(--driver-front-layer);
+}
+
+.centerCore,
+.sideAssembly,
+.effectLayer {
+  position: absolute;
+  inset: 0;
+}
+
+.centerCore {
+  z-index: var(--driver-back-layer);
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  filter: brightness(1.08) contrast(1.08) drop-shadow(0 22px 32px rgba(0,0,0,.45));
+  user-select: none;
+  pointer-events: none;
+}
+
+/* One transform owner per side. Chassis, slot window, rod, and mask are all descendants. */
+.sideAssembly {
+  z-index: var(--driver-side-layer);
+  transform-origin: 50% 50%;
+  will-change: transform;
+  transition: transform .18s cubic-bezier(.16,.82,.24,1);
+  user-select: none;
+  pointer-events: none;
+}
+
+.leftSideAssembly {
+  transform: translateX(calc(var(--driver-close) * var(--chassis-shift))) rotate(calc(var(--driver-close) * var(--chassis-rotation) * -1));
+}
+
+.rightSideAssembly {
+  transform: translateX(calc(var(--driver-close) * var(--chassis-shift) * -1)) rotate(calc(var(--driver-close) * var(--chassis-rotation)));
+}
+
+.chassisBackTexture,
+.slotForegroundMask {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  user-select: none;
+  pointer-events: none;
+}
+
+.chassisBackTexture { z-index: var(--driver-back-layer); filter: brightness(1.08) contrast(1.08) drop-shadow(0 22px 32px rgba(0,0,0,.45)); }
+.slotForegroundMask { z-index: var(--driver-front-layer); filter: brightness(1.04) contrast(1.05) drop-shadow(0 5px 10px rgba(0,0,0,.32)); }
+
+/* Exact aperture from the assembly texture; this is the only rod clipping container. */
+.slotWindow {
+  position: absolute;
+  top: calc(50% - (var(--driver-slot-window-height) / 2));
+  width: var(--driver-slot-window-width);
+  height: var(--driver-slot-window-height);
+  overflow: hidden;
+  clip-path: inset(0 round 8px);
+  z-index: var(--driver-side-layer);
+}
+
+.leftSideAssembly .slotWindow { left: calc(var(--driver-slot-left) - (var(--driver-slot-window-width) / 2)); }
+.rightSideAssembly .slotWindow { left: calc(var(--driver-slot-right) - (var(--driver-slot-window-width) / 2)); }
+
+/* The rod uses tight-crop geometry; only local y changes during insertion. */
+.rodViewport {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  clip-path: inset(0 round 8px);
+  z-index: var(--driver-side-layer);
+}
+
+.scene .rodViewport :global(.texture-driver-rod).rodSprite {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: var(--driver-side-layer);
+  width: 100%;
+  height: var(--driver-rod-fill);
+  max-width: none;
+  max-height: none;
+  object-fit: fill;
+  transform: translateY(-100%);
+  clip-path: none;
+  opacity: 1;
+  filter: drop-shadow(0 8px 16px rgba(0,0,0,.6));
+  animation: side-rod-insert .62s cubic-bezier(.16,.82,.24,1) both;
+  transition: none;
+  user-select: none;
+  pointer-events: none;
+}
+
+@keyframes side-rod-insert {
+  from { opacity: 1; transform: translateY(-100%); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.effectLayer {
+  z-index: var(--driver-effect-layer);
+  pointer-events: none;
+}
+
+.snapLock {
+  position: absolute;
+  left: 50%;
+  bottom: 12.8%;
+  width: 7.2%;
+  height: 4.3%;
+  border: 1px solid rgba(212, 221, 230, .82);
+  border-radius: 4px;
+  background: linear-gradient(180deg, #aebac5, #3e4a56 52%, #10151c);
+  box-shadow: 0 4px 8px rgba(0,0,0,.5), inset 0 0 0 1px rgba(0,0,0,.68);
+  opacity: 0;
+  transform: translateX(-50%) translateY(5px) scale(.94);
+}
+
+.snapFlash {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 24%;
+  height: 52%;
+  border: 1px solid rgba(239, 48, 72, .58);
+  border-radius: 14px;
+  box-shadow: 0 0 22px rgba(239,48,72,.28), inset 0 0 16px rgba(239,48,72,.12);
+  opacity: 0;
+  transform: translate(-50%, -50%) scale(.96);
+}
+
+.scene.phase-activated .leftSideAssembly { animation: side-assembly-left-snap .5s cubic-bezier(.16,.82,.24,1) both; }
+.scene.phase-activated .rightSideAssembly { animation: side-assembly-right-snap .5s cubic-bezier(.16,.82,.24,1) both; }
+
+@keyframes side-assembly-left-snap {
+  0% { transform: translateX(calc(var(--chassis-shift) * var(--driver-close))) rotate(calc(var(--chassis-rotation) * -1)); }
+  56% { transform: translateX(calc(var(--chassis-shift) * 1.08)) rotate(calc(var(--chassis-rotation) * -1.18)); }
+  78% { transform: translateX(calc(var(--chassis-shift) * .96)) rotate(calc(var(--chassis-rotation) * -.88)); }
+  100% { transform: translateX(var(--chassis-shift)) rotate(calc(var(--chassis-rotation) * -1)); }
+}
+
+@keyframes side-assembly-right-snap {
+  0% { transform: translateX(calc(var(--chassis-shift) * var(--driver-close) * -1)) rotate(var(--chassis-rotation)); }
+  56% { transform: translateX(calc(var(--chassis-shift) * -1.08)) rotate(calc(var(--chassis-rotation) * 1.18)); }
+  78% { transform: translateX(calc(var(--chassis-shift) * -.96)) rotate(calc(var(--chassis-rotation) * .88)); }
+  100% { transform: translateX(calc(var(--chassis-shift) * -1)) rotate(var(--chassis-rotation)); }
+}
+
+.scene.phase-activated .snapLock { animation: snap-lock .5s cubic-bezier(.16,.82,.24,1) both; }
+.scene.phase-activated .snapFlash { animation: snap-flash .5s cubic-bezier(.16,.82,.24,1) both; }
+
+@keyframes snap-lock {
+  0%, 58% { opacity: 0; transform: translateX(-50%) translateY(5px) scale(.94); }
+  70% { opacity: 1; transform: translateX(-50%) translateY(-1px) scale(1.05); }
+  100% { opacity: .96; transform: translateX(-50%) translateY(0) scale(1); }
+}
+
+@keyframes snap-flash {
+  0%, 54% { opacity: 0; transform: translate(-50%, -50%) scale(.96); }
+  64% { opacity: .68; transform: translate(-50%, -50%) scale(1.03); }
+  100% { opacity: .12; transform: translate(-50%, -50%) scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scene :global(*) {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+
+  .scene.phase-activated .leftSideAssembly {
+    transform: translateX(var(--chassis-shift)) rotate(calc(var(--chassis-rotation) * -1)) !important;
+  }
+
+  .scene.phase-activated .rightSideAssembly {
+    transform: translateX(calc(var(--chassis-shift) * -1)) rotate(var(--chassis-rotation)) !important;
+  }
+
+  .scene .rodViewport :global(.texture-driver-rod).rodSprite {
+    transform: translateY(0) !important;
+  }
+
+  .scene.phase-activated .snapLock { opacity: .96; transform: translateX(-50%) translateY(0) scale(1); }
+  .scene.phase-activated .snapFlash { opacity: .12; transform: translate(-50%, -50%) scale(1); }
+}

@@ -1,0 +1,111 @@
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: var(--layer-hands);
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(3, 5, 8, .76);
+  backdrop-filter: blur(8px);
+}
+
+.panel {
+  width: min(680px, 100%);
+  max-height: min(760px, calc(100dvh - 40px));
+  overflow: auto;
+  border: 1px solid var(--line-strong);
+  border-radius: 14px;
+  background: #0d1118;
+  box-shadow: 0 28px 80px rgba(0, 0, 0, .62);
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 22px 24px 18px;
+  border-bottom: 1px solid var(--line);
+}
+
+.eyebrow { color: var(--signal); font: 9px/1 monospace; letter-spacing: .13em; }
+.header h2 { margin: 10px 0 0; font-size: 22px; }
+.header p { max-width: 470px; margin: 9px 0 0; color: var(--muted); font-size: 11px; line-height: 1.6; }
+.close { width: 32px; height: 32px; flex: 0 0 auto; border: 1px solid var(--line); border-radius: 7px; background: transparent; color: var(--muted); font-size: 20px; cursor: pointer; }
+.close:hover { color: var(--text); border-color: var(--line-strong); }
+
+.energyBody, .skillBody { padding: 18px 24px; }
+.materialSection, .customSection { min-width: 0; }
+.sectionHeading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.sectionHeading h3 { margin: 0; font-size: 13px; }
+.sectionHeading p { margin: 6px 0 0; color: var(--muted); font-size: 10px; line-height: 1.45; }
+.sectionHeading > span { flex: 0 0 auto; color: var(--subtle); font: 9px/1.2 monospace; }
+.materialGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 13px; }
+.materialOption { min-width: 0; display: grid; grid-template-columns: 24px minmax(0, 1fr); gap: 9px; align-items: center; position: relative; padding: 11px; border: 1px solid var(--line); border-radius: 8px; background: #090c11; color: var(--text); text-align: left; cursor: pointer; }
+.materialOption:hover, .materialOption.selected { border-color: var(--signal); background: rgba(239, 48, 72, .07); }
+.materialMark { color: var(--signal); font-size: 17px; }
+.materialCopy { min-width: 0; }
+.materialCopy strong, .materialCopy small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.materialCopy strong { font-size: 11px; }
+.materialCopy small { margin-top: 5px; color: var(--muted); font-size: 9px; }
+.materialOption em { grid-column: 2; color: var(--subtle); font-size: 8px; font-style: normal; }
+.divider { display: flex; align-items: center; gap: 12px; margin: 18px 0; color: var(--subtle); font-size: 10px; }
+.divider::before, .divider::after { content: ""; height: 1px; flex: 1; background: var(--line); }
+.dropzone {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  padding: 34px 18px;
+  border: 1px dashed var(--line-strong);
+  border-radius: 10px;
+  background: #090c11;
+  text-align: center;
+  transition: border-color .16s ease, background .16s ease;
+}
+.dropzone.dragging { border-color: var(--signal); background: rgba(239, 48, 72, .08); }
+.dropMark { color: var(--signal); font-size: 28px; line-height: 1; }
+.dropzone strong { font-size: 14px; }
+.dropzone small { color: var(--muted); font-size: 10px; }
+.browse, .confirm { min-height: 38px; padding: 0 14px; border-radius: 7px; cursor: pointer; }
+.browse { margin-top: 4px; border: 1px solid var(--line-strong); background: transparent; color: var(--text); font-size: 11px; }
+.browse:hover { border-color: var(--signal); }
+.browse:disabled, .confirm:disabled { opacity: .45; cursor: not-allowed; }
+.hiddenInput { display: none; }
+
+.documentCard { margin-top: 14px; padding: 13px; border: 1px solid var(--line); border-radius: 9px; background: rgba(5, 7, 10, .56); }
+.cardHead { display: flex; justify-content: space-between; gap: 12px; }
+.cardHead strong, .cardHead small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cardHead strong { font-size: 12px; }
+.cardHead small { margin-top: 5px; color: var(--muted); font-size: 10px; }
+.cardHead > span { flex: 0 0 auto; color: var(--signal); font: 9px/1 monospace; }
+.remove { flex: 0 0 auto; border: 0; background: transparent; color: var(--muted); font-size: 10px; text-decoration: underline; cursor: pointer; }
+.remove:hover { color: var(--text); }
+.documentCard > p { margin: 12px 0 0; color: #c7ccd4; font-size: 11px; line-height: 1.55; }
+.documentCard pre { max-height: 150px; margin: 10px 0 0; overflow: auto; white-space: pre-wrap; color: var(--muted); font: 10px/1.55 "SFMono-Regular", Consolas, monospace; }
+
+.presetGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.preset { min-height: 112px; display: flex; flex-direction: column; align-items: flex-start; padding: 13px; border: 1px solid var(--line); border-radius: 9px; background: #090c11; color: var(--text); text-align: left; cursor: pointer; }
+.preset:hover, .preset.selected { border-color: var(--signal); background: rgba(239, 48, 72, .07); }
+.preset small { color: var(--signal); font: 8px/1 monospace; letter-spacing: .12em; }
+.preset strong { margin-top: 10px; font-size: 15px; }
+.preset span { margin-top: 7px; color: var(--muted); font-size: 10px; line-height: 1.5; }
+.promptField { display: grid; gap: 8px; margin-top: 16px; }
+.promptField > span { color: var(--text); font-size: 11px; font-weight: 700; }
+.promptField textarea { width: 100%; resize: vertical; padding: 11px; border: 1px solid var(--line); border-radius: 8px; outline: none; background: #090c11; color: #d6dae0; font: 11px/1.6 "SFMono-Regular", Consolas, monospace; }
+.promptField textarea:focus { border-color: var(--signal); }
+.promptField textarea[readonly] { color: #c7ccd4; }
+.promptField small { color: var(--muted); font-size: 10px; line-height: 1.45; }
+
+.error { margin: 0 24px 16px; color: #ff8b99; font-size: 11px; line-height: 1.5; }
+.footer { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 24px 20px; border-top: 1px solid var(--line); color: var(--muted); font-size: 11px; }
+.confirm { border: 1px solid var(--signal); background: var(--signal-deep); color: #fff; font-weight: 700; }
+.confirm:hover:not(:disabled) { filter: brightness(1.1); }
+
+@media (max-width: 620px) {
+  .backdrop { padding: 12px; }
+  .header { padding: 18px 16px 14px; }
+  .energyBody, .skillBody { padding: 14px 16px; }
+  .materialGrid { grid-template-columns: 1fr; }
+  .presetGrid { grid-template-columns: 1fr; }
+  .footer { align-items: stretch; flex-direction: column; padding: 14px 16px 16px; }
+  .confirm { width: 100%; }
+}

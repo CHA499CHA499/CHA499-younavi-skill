@@ -1,0 +1,242 @@
+[
+  {
+    "display": "block",
+    "exists": true,
+    "intersectionArea": 0,
+    "opacity": "1",
+    "phase": "LOCKED",
+    "rod": {
+      "bottom": 60.36328125,
+      "height": 209.8671875,
+      "left": 533.6875,
+      "right": 585.0625,
+      "top": -149.50390625,
+      "width": 51.375,
+      "x": 533.6875,
+      "y": -149.50390625
+    },
+    "rodHeightRatio": 0.9399888025754076,
+    "slot": {
+      "bottom": 283.62890625,
+      "height": 223.265625,
+      "left": 533.6875,
+      "right": 585.0625,
+      "top": 60.36328125,
+      "width": 51.375,
+      "x": 533.6875,
+      "y": 60.36328125
+    },
+    "transform": "matrix(1, 0, 0, 1, 0, -209.867)",
+    "visibility": "visible"
+  },
+  {
+    "display": "block",
+    "exists": true,
+    "intersectionArea": 6988.962936401367,
+    "opacity": "1",
+    "phase": "LOCKED",
+    "rod": {
+      "bottom": 196.4014892578125,
+      "height": 209.8671875,
+      "left": 533.6875,
+      "right": 585.0625,
+      "top": -13.4656982421875,
+      "width": 51.375,
+      "x": 533.6875,
+      "y": -13.4656982421875
+    },
+    "rodHeightRatio": 0.9399888025754076,
+    "slot": {
+      "bottom": 283.62890625,
+      "height": 223.265625,
+      "left": 533.6875,
+      "right": 585.0625,
+      "top": 60.36328125,
+      "width": 51.375,
+      "x": 533.6875,
+      "y": 60.36328125
+    },
+    "transform": "matrix(1, 0, 0, 1, 0, -73.829)",
+    "visibility": "visible"
+  },
+  {
+    "display": "block",
+    "exists": true,
+    "intersectionArea": 9169.106795310974,
+    "opacity": "1",
+    "phase": "LOCKED",
+    "rod": {
+      "bottom": 238.8373794555664,
+      "height": 209.8671875,
+      "left": 533.6875,
+      "right": 585.0625,
+      "top": 28.970191955566406,
+      "width": 51.375,
+      "x": 533.6875,
+      "y": 28.970191955566406
+    },
+    "rodHeightRatio": 0.9399888025754076,
+    "slot": {
+      "bottom": 283.62890625,
+      "height": 223.265625,
+      "left": 533.6875,
+      "right": 585.0625,
+      "top": 60.36328125,
+      "width": 51.375,
+      "x": 533.6875,
+      "y": 60.36328125
+    },
+    "transform": "matrix(1, 0, 0, 1, 0, -31.3931)",
+    "visibility": "visible"
+  },
+  {
+    "display": "block",
+    "exists": true,
+    "intersectionArea": 10236.340187072754,
+    "opacity": "1",
+    "phase": "LOCKED",
+    "rod": {
+      "bottom": 259.61077880859375,
+      "height": 209.8671875,
+      "left": 533.6875,
+      "right": 585.0625,
+      "top": 49.74359130859375,
+      "width": 51.375,
+      "x": 533.6875,
+      "y": 49.74359130859375
+    },
+    "rodHeightRatio": 0.9399888025754076,
+    "slot": {
+      "bottom": 283.62890625,
+      "height": 223.265625,
+      "left": 533.6875,
+      "right": 585.0625,
+      "top": 60.36328125,
+      "width": 51.375,
+      "x": 533.6875,
+      "y": 60.36328125
+    },
+    "transform": "matrix(1, 0, 0, 1, 0, -10.6197)",
+    "visibility": "visible"
+  },
+  {
+    "display": "block",
+    "exists": true,
+    "intersectionArea": 10631.316856384276,
+    "opacity": "1",
+    "phase": "LOCKED",
+    "rod": {
+      "bottom": 267.29888916015625,
+      "height": 209.86720275878903,
+      "left": 533.6875,
+      "right": 585.0625,
+      "top": 57.43168640136719,
+      "width": 51.375,
+      "x": 533.6875,
+      "y": 57.43168640136719
+    },
+    "rodHeightRatio": 0.9399888709190636,
+    "slot": {
+      "bottom": 283.62890625,
+      "height": 223.265625,
+      "left": 533.6875,
+      "right": 585.0625,
+      "top": 60.36328125,
+      "width": 51.375,
+      "x": 533.6875,
+      "y": 60.36328125
+    },
+    "transform": "matrix(1, 0, 0, 1, 0, -2.93159)",
+    "visibility": "visible"
+  },
+  {
+    "display": "block",
+    "exists": true,
+    "intersectionArea": 10781.9267578125,
+    "opacity": "1",
+    "phase": "LOCKED",
+    "rod": {
+      "bottom": 270.23046875,
+      "height": 209.8671875,
+      "left": 533.6875,
+      "right": 585.0625,
+      "top": 60.36328125,
+      "width": 51.375,
+      "x": 533.6875,
+      "y": 60.36328125
+    },
+    "rodHeightRatio": 0.9399888025754076,
+    "slot": {
+      "bottom": 283.62890625,
+      "height": 223.265625,
+      "left": 533.6875,
+      "right": 585.0625,
+      "top": 60.36328125,
+      "width": 51.375,
+      "x": 533.6875,
+      "y": 60.36328125
+    },
+    "transform": "matrix(1, 0, 0, 1, 0, 0)",
+    "visibility": "visible"
+  },
+  {
+    "display": "block",
+    "exists": true,
+    "intersectionArea": 10781.9267578125,
+    "opacity": "1",
+    "phase": "LOCKED",
+    "rod": {
+      "bottom": 270.23046875,
+      "height": 209.8671875,
+      "left": 533.6875,
+      "right": 585.0625,
+      "top": 60.36328125,
+      "width": 51.375,
+      "x": 533.6875,
+      "y": 60.36328125
+    },
+    "rodHeightRatio": 0.9399888025754076,
+    "slot": {
+      "bottom": 283.62890625,
+      "height": 223.265625,
+      "left": 533.6875,
+      "right": 585.0625,
+      "top": 60.36328125,
+      "width": 51.375,
+      "x": 533.6875,
+      "y": 60.36328125
+    },
+    "transform": "matrix(1, 0, 0, 1, 0, 0)",
+    "visibility": "visible"
+  },
+  {
+    "display": "block",
+    "exists": true,
+    "intersectionArea": 10781.9267578125,
+    "opacity": "1",
+    "phase": "LOCKED",
+    "rod": {
+      "bottom": 270.23046875,
+      "height": 209.8671875,
+      "left": 533.6875,
+      "right": 585.0625,
+      "top": 60.36328125,
+      "width": 51.375,
+      "x": 533.6875,
+      "y": 60.36328125
+    },
+    "rodHeightRatio": 0.9399888025754076,
+    "slot": {
+      "bottom": 283.62890625,
+      "height": 223.265625,
+      "left": 533.6875,
+      "right": 585.0625,
+      "top": 60.36328125,
+      "width": 51.375,
+      "x": 533.6875,
+      "y": 60.36328125
+    },
+    "transform": "matrix(1, 0, 0, 1, 0, 0)",
+    "visibility": "visible"
+  }
+]

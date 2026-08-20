@@ -1,0 +1,35 @@
+{
+  "schema": "persona-driver-sprites/v1",
+  "source": "approved element textures in public/driver-textures",
+  "size": [
+    1024,
+    1024
+  ],
+  "empty": "/driver-textures/frames/belt-empty.png",
+  "insert": [
+    "/driver-textures/frames/insert-00.png",
+    "/driver-textures/frames/insert-01.png",
+    "/driver-textures/frames/insert-02.png",
+    "/driver-textures/frames/insert-03.png",
+    "/driver-textures/frames/insert-04.png",
+    "/driver-textures/frames/insert-05.png",
+    "/driver-textures/frames/insert-06.png",
+    "/driver-textures/frames/insert-07.png"
+  ],
+  "loadedEnergy": "/driver-textures/frames/loaded-energy.png",
+  "loadedSkill": "/driver-textures/frames/loaded-skill.png",
+  "activate": [
+    "/driver-textures/frames/activate-00.png",
+    "/driver-textures/frames/activate-01.png",
+    "/driver-textures/frames/activate-02.png",
+    "/driver-textures/frames/activate-03.png",
+    "/driver-textures/frames/activate-04.png",
+    "/driver-textures/frames/activate-05.png",
+    "/driver-textures/frames/activate-06.png",
+    "/driver-textures/frames/activate-07.png",
+    "/driver-textures/frames/activate-08.png",
+    "/driver-textures/frames/activate-09.png",
+    "/driver-textures/frames/activate-10.png",
+    "/driver-textures/frames/activate-11.png"
+  ]
+}
